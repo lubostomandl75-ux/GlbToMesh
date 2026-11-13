@@ -1,0 +1,42 @@
+BasedOnStyle: Microsoft
+
+# --- NASTAVENÍ PRO SKUTEČNÉ TABULÁTORY ---
+UseTab: Always
+TabWidth: 4
+IndentWidth: 4
+
+SpacesInLineCommentPrefix:
+  Minimum: 0
+  Maximum: -1
+
+# Přinutí složené závorky zůstat na stejném řádku
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterNamespace: false
+  AfterStruct: false
+  AfterControlStatement: Never
+
+# Vrátí odsazení struktury uvnitř jmenného prostoru
+NamespaceIndentation: All
+
+# Vypne automatické generování komentáře za koncovou závorkou
+FixNamespaceComments: false
+
+# --- NOVÉ VOLBY PRO HEZČÍ INICIALIZACI ---
+AlignAfterOpenBracket: BlockIndent
+SpaceBeforeCpp11BracedList: true
+
+# --- OPRAVA ZALAMOVÁNÍ ŘÁDKŮ A ZAROVNÁNÍ ---
+ColumnLimit: 0
+ReflowComments: false
+
+# Vypne zarovnávání jmen metod a proměnných pod sebe
+AlignConsecutiveDeclarations: None
+
+# Zarovnání řádkových komentářů na konci řádků pod sebe
+AlignTrailingComments:
+  Kind: Always
+  OverEmptyLines: 0
+
+# Zabrání slití include direktiv a prázdných řádků
+MaxEmptyLinesToKeep: 1

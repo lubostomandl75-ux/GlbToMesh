@@ -1,0 +1,15 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+  </Configurations>
+  <Folder Name="/Solution Items/">
+    <File Path=".clang-format" />
+    <File Path="clean.bat" />
+    <File Path="README.en.md" />
+    <File Path="README.md" />
+  </Folder>
+  <Project Path="GlbToMesh/GlbToMesh.vcxproj" Id="1c1f1c35-77d3-45cc-910a-04e16d8fd626" />
+  <Project Path="GlbToMesh/glTF-SDK/glTF-SDK.vcxproj" Id="abe2d52a-917d-41f8-bc55-eec25b690720">
+    <Platform Project="x64" />
+  </Project>
+</Solution>

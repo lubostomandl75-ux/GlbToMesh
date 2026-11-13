@@ -1,0 +1,151 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="Core">
+      <UniqueIdentifier>{2ff4a085-69e9-4066-8678-a5968e6ef344}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Formats">
+      <UniqueIdentifier>{727bf5d6-b062-466a-b8a8-a171856bab17}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Formats\CMO">
+      <UniqueIdentifier>{9bccc944-28a3-4ebb-93e0-130d0a6caa72}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Formats\SDKMESH">
+      <UniqueIdentifier>{f8ec9fe1-932b-4011-9972-2bd92965614a}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="core\ExportUtil.cpp">
+      <Filter>Core</Filter>
+    </ClCompile>
+    <ClCompile Include="core\FileUtil.cpp">
+      <Filter>Core</Filter>
+    </ClCompile>
+    <ClCompile Include="core\FormatRegistry.cpp">
+      <Filter>Core</Filter>
+    </ClCompile>
+    <ClCompile Include="core\GltfLoader.cpp">
+      <Filter>Core</Filter>
+    </ClCompile>
+    <ClCompile Include="core\OutputWriter.cpp">
+      <Filter>Core</Filter>
+    </ClCompile>
+    <ClCompile Include="core\TextUtil.cpp">
+      <Filter>Core</Filter>
+    </ClCompile>
+    <ClCompile Include="formats\FormatList.cpp">
+      <Filter>Formats</Filter>
+    </ClCompile>
+    <ClCompile Include="formats\cmo\CmoConverter.cpp">
+      <Filter>Formats\CMO</Filter>
+    </ClCompile>
+    <ClCompile Include="formats\cmo\CmoOutputFormat.cpp">
+      <Filter>Formats\CMO</Filter>
+    </ClCompile>
+    <ClCompile Include="formats\cmo\CmoWriter.cpp">
+      <Filter>Formats\CMO</Filter>
+    </ClCompile>
+    <ClCompile Include="formats\sdkmesh\SdkMeshConverter.cpp">
+      <Filter>Formats\SDKMESH</Filter>
+    </ClCompile>
+    <ClCompile Include="formats\sdkmesh\SdkMeshOutputFormat.cpp">
+      <Filter>Formats\SDKMESH</Filter>
+    </ClCompile>
+    <ClCompile Include="formats\sdkmesh\SdkMeshWriter.cpp">
+      <Filter>Formats\SDKMESH</Filter>
+    </ClCompile>
+    <ClCompile Include="CommandLine.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="main.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="core\ExportUtil.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\FileUtil.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\GltfLoader.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\GltfScene.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\Log.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\MathUtil.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\OutputFormat.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\OutputWriter.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\TextUtil.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="formats\cmo\CmoConverter.h">
+      <Filter>Formats\CMO</Filter>
+    </ClInclude>
+    <ClInclude Include="formats\cmo\CmoFormat.h">
+      <Filter>Formats\CMO</Filter>
+    </ClInclude>
+    <ClInclude Include="formats\cmo\CmoModel.h">
+      <Filter>Formats\CMO</Filter>
+    </ClInclude>
+    <ClInclude Include="formats\cmo\CmoOutputFormat.h">
+      <Filter>Formats\CMO</Filter>
+    </ClInclude>
+    <ClInclude Include="formats\cmo\CmoWriter.h">
+      <Filter>Formats\CMO</Filter>
+    </ClInclude>
+    <ClInclude Include="formats\sdkmesh\SdkMeshConverter.h">
+      <Filter>Formats\SDKMESH</Filter>
+    </ClInclude>
+    <ClInclude Include="formats\sdkmesh\SdkMeshFormat.h">
+      <Filter>Formats\SDKMESH</Filter>
+    </ClInclude>
+    <ClInclude Include="formats\sdkmesh\SdkMeshModel.h">
+      <Filter>Formats\SDKMESH</Filter>
+    </ClInclude>
+    <ClInclude Include="formats\sdkmesh\SdkMeshOutputFormat.h">
+      <Filter>Formats\SDKMESH</Filter>
+    </ClInclude>
+    <ClInclude Include="formats\sdkmesh\SdkMeshWriter.h">
+      <Filter>Formats\SDKMESH</Filter>
+    </ClInclude>
+    <ClInclude Include="CommandLine.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Resource.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="Icon.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="Resource.rc">
+      <Filter>Resource Files</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+</Project>
