@@ -1,5 +1,7 @@
 # GlbToMesh
 
+Česky: [README.md](README.md)
+
 A console application for **Windows** (modern **C++20**, a project for **Visual Studio 2026 Community**) that converts
 **glTF 2.0** models (`.glb`, and `.gltf` with external files or data URIs) to Direct3D mesh formats, including **materials,
 textures, hierarchy, skeletons, skinning and animations**. It currently writes two output formats:

@@ -1,5 +1,7 @@
 # GlbToMesh
 
+English: [README.en.md](README.en.md)
+
 Konzolová aplikace pro **Windows** (moderní **C++20**, projekt pro **Visual Studio 2026 Community**), která převádí modely
 **glTF 2.0** (`.glb` i `.gltf` s vnějšími soubory nebo daty v URI) do formátů Direct3D včetně **materiálů, textur, hierarchie,
 kostry, skinningu a animací**. Dnes umí dva výstupní formáty:
