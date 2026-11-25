@@ -18,6 +18,7 @@
 #include <filesystem>
 #include <set>
 #include <string>
+#include <vector>
 
 namespace TextUtil {
 
@@ -48,6 +49,9 @@ namespace TextUtil {
 
 	/// Převede ASCII znaky řetězce na malá písmena (pro porovnání přípon a názvů souborů)
 	std::string ToLowerAscii(std::string text);
+
+	/// Spojí texty oddělovačem (např. "a, b, c"); prázdný seznam dá prázdný text
+	std::string Join(const std::vector<std::string> &items, const std::string &separator);
 
 	/**
 	 * Převede text na UTF-16 (jednotky wchar_t ve Windows, tedy jak je ukládá CMO). Platné UTF-8 se převede přesně, cokoliv jiného

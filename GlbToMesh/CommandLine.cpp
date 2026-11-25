@@ -9,9 +9,11 @@
 
 // Hlavičkové soubory C++
 #include <algorithm>
+#include <functional>
 #include <iostream>
-#include <set>
 #include <stdexcept>
+#include <string>
+#include <vector>
 
 // Hlavičkové soubory projektu
 #include "CommandLine.h"
@@ -23,18 +25,89 @@ namespace CommandLine {
 
 	namespace {
 
-		/// Společné přepínače: formát je nesmí přidávat
-		const std::set<std::string> &ReservedLongOptions()
-		{
-			static const std::set<std::string> names = {"help", "verbose", "output", "format", "list-formats", "no-anim", "no-textures", "texture-dir", "left-handed", "right-handed", "srgb-colors"};
+		/// Společný přepínač programu: popis (název, zkratka, nápověda) a jeho účinek na nastavení
+		struct CommonOption {
+			Formats::OptionSpec spec;
+			std::function<void(Settings &, const std::string &)> apply; // hodnota je prázdná u přepínače bez hodnoty
+		};
 
-			return names;
+		/// Společné přepínače v pořadí nápovědy; řídí parsování, nápovědu i názvy, které formáty nesmí použít
+		const std::vector<CommonOption> &CommonOptions()
+		{
+			static const std::vector<CommonOption> options = {
+				{{"output", 'o', "file", "Output file (default: the input name with the extension of the format; needs --format)", {}},
+				 [](Settings &s, const std::string &v) { s.output = TextUtil::PathFromUtf8(v); }},
+				{{"format", 'f', "name", "Output format (default: from the extension of the output file)", {}},
+				 [](Settings &s, const std::string &v) { s.formatName = v; }},
+				{{"list-formats", '\0', "", "List the supported output formats", {}},
+				 [](Settings &s, const std::string &) { s.listFormats = true; }},
+				{{"no-anim", '\0', "", "Export no animations (skeleton and skinning are kept)", {}},
+				 [](Settings &s, const std::string &) { s.common.noAnimations = true; }},
+				{{"no-textures", '\0', "", "Do not write texture files; materials are exported without textures", {}},
+				 [](Settings &s, const std::string &) { s.common.noTextures = true; }},
+				{{"texture-dir", '\0', "dir", "Directory for the texture files (default: the directory of the output file).\nThe model refers to the textures by their file names only.", {}},
+				 [](Settings &s, const std::string &v) { s.textureDirectory = TextUtil::PathFromUtf8(v); }},
+				{{"left-handed", '\0', "", "Write the model in the left-handed Direct3D system: mirror the Z axis", {}},
+				 [](Settings &s, const std::string &) { s.common.handedness = Formats::Handedness::Left; }},
+				{{"right-handed", '\0', "",
+				  "Write the model right-handed, like glTF: do not mirror. Without either option the\nformat decides (see the notes of the formats below). The triangle winding is always\nwritten the way the format expects.",
+				  {}},
+				 [](Settings &s, const std::string &) { s.common.handedness = Formats::Handedness::Right; }},
+				{{"srgb-colors", '\0', "", "Write the material colors as sRGB (glTF has them linear)", {}},
+				 [](Settings &s, const std::string &) { s.common.srgbColors = true; }},
+				{{"verbose", 'v', "", "Print details", {}},
+				 [](Settings &, const std::string &) { Log::Verbose() = true; }},
+				{{"help", 'h', "", "Show this help", {}},
+				 [](Settings &s, const std::string &) { s.help = true; }},
+			};
+
+			return options;
 		}
 
-		/// Zkratka je vyhrazená pro společný přepínač programu (-h, -v, -o, -f); formát ji nesmí použít
+		/// Společný přepínač zadaný argumentem ("--název" nebo "-x"), jinak nullptr
+		const CommonOption *FindCommon(const std::string &arg)
+		{
+			for (const CommonOption &option : CommonOptions()) {
+
+				if ((arg.size() > 2 && arg.compare(0, 2, "--") == 0 && option.spec.MatchesLong(arg.substr(2))) ||
+					(arg.size() == 2 && arg[0] == '-' && option.spec.MatchesShort(arg[1]))) {
+					return &option;
+				}
+			}
+
+			return nullptr;
+		}
+
+		/// Dlouhý název patří společnému přepínači programu; formát ho nesmí použít
+		bool IsReservedLong(const std::string &name)
+		{
+			return std::any_of(CommonOptions().begin(), CommonOptions().end(), [&](const CommonOption &option) { return option.spec.MatchesLong(name); });
+		}
+
+		/// Zkratka patří společnému přepínači programu; formát ji nesmí použít
 		bool IsReservedShort(char c)
 		{
-			return c == 'h' || c == 'v' || c == 'o' || c == 'f';
+			return std::any_of(CommonOptions().begin(), CommonOptions().end(), [&](const CommonOption &option) { return option.spec.MatchesShort(c); });
+		}
+
+		/// Vypíše řádek nápovědy přepínače; víceřádkový text se zarovná pod první řádek
+		void PrintOption(const Formats::OptionSpec &spec)
+		{
+			std::string label = spec.shortName != '\0' ? std::string("-") + spec.shortName + ", " : std::string("    ");
+			label += "--" + spec.name + (spec.TakesValue() ? " <" + spec.valueName + ">" : std::string());
+			label.resize(std::max<size_t>(label.size() + 1, 25), ' ');
+
+			std::string help;
+
+			for (const char c : spec.help) {
+				help += c;
+
+				if (c == '\n') {
+					help += std::string(27, ' ');
+				}
+			}
+
+			std::cout << "  " << label << help << "\n";
 		}
 
 		/**
@@ -51,7 +124,7 @@ namespace CommandLine {
 				for (const Formats::OptionSpec &spec : format->Options()) {
 					for (const std::string &name : spec.AllNames()) {
 
-						if (ReservedLongOptions().count(name) > 0) {
+						if (IsReservedLong(name)) {
 							throw std::logic_error("The format '" + format->Name() + "' declares the option --" + name + ", which is a common option of the program");
 						}
 					}
@@ -66,13 +139,13 @@ namespace CommandLine {
 		/// Názvy všech registrovaných formátů oddělené čárkou (pro hlášení chyb a nápovědu)
 		std::string FormatNames(const Formats::FormatRegistry &registry)
 		{
-			std::string names;
+			std::vector<std::string> names;
 
 			for (const auto &format : registry.Formats()) {
-				names += (names.empty() ? "" : ", ") + format->Name();
+				names.push_back(format->Name());
 			}
 
-			return names;
+			return TextUtil::Join(names, ", ");
 		}
 
 		/// "Option --x" (nebo "-x") pro hlášení
@@ -99,38 +172,11 @@ namespace CommandLine {
 				return args[++i];
 			};
 
-			if (arg == "-h" || arg == "--help" || arg == "/?") {
+			if (arg == "/?") {
 				settings.help = true;
 			}
-			else if (arg == "--list-formats") {
-				settings.listFormats = true;
-			}
-			else if (arg == "-v" || arg == "--verbose") {
-				Log::Verbose() = true;
-			}
-			else if (arg == "-o" || arg == "--output") {
-				settings.output = TextUtil::PathFromUtf8(value("--output"));
-			}
-			else if (arg == "-f" || arg == "--format") {
-				settings.formatName = value("--format");
-			}
-			else if (arg == "--no-anim") {
-				settings.common.noAnimations = true;
-			}
-			else if (arg == "--no-textures") {
-				settings.common.noTextures = true;
-			}
-			else if (arg == "--texture-dir") {
-				settings.textureDirectory = TextUtil::PathFromUtf8(value("--texture-dir"));
-			}
-			else if (arg == "--left-handed") {
-				settings.common.handedness = Formats::Handedness::Left;
-			}
-			else if (arg == "--right-handed") {
-				settings.common.handedness = Formats::Handedness::Right;
-			}
-			else if (arg == "--srgb-colors") {
-				settings.common.srgbColors = true;
+			else if (const CommonOption *common = FindCommon(arg)) {
+				common->apply(settings, common->spec.TakesValue() ? value(OptionLabel(common->spec)) : std::string());
 			}
 			else if (arg.size() > 1 && arg[0] == '-') {
 				// Přepínač formátu: dlouhý (--název) nebo jednopísmenný (-a)
@@ -228,13 +274,13 @@ namespace CommandLine {
 			const std::vector<const Formats::OutputFormat *> owners = registry.OwnersOfLong(name);
 
 			if (std::find(owners.begin(), owners.end(), settings.format) == owners.end()) {
-				std::string others;
+				std::vector<std::string> others;
 
 				for (const Formats::OutputFormat *owner : owners) {
-					others += (others.empty() ? "" : ", ") + owner->Name();
+					others.push_back(owner->Name());
 				}
 
-				throw Formats::UsageError("The option --" + name + " is not supported by the format " + settings.format->Name() + " (it belongs to " + others + ")");
+				throw Formats::UsageError("The option --" + name + " is not supported by the format " + settings.format->Name() + " (it belongs to " + TextUtil::Join(others, ", ") + ")");
 			}
 
 			settings.formatOptions.Add(name, value);
@@ -246,12 +292,7 @@ namespace CommandLine {
 	void PrintFormats(const Formats::FormatRegistry &registry)
 	{
 		for (const auto &format : registry.Formats()) {
-			std::string extensions;
-
-			for (const std::string &extension : format->Extensions()) {
-				extensions += (extensions.empty() ? "" : ", ") + extension;
-			}
-
+			const std::string extensions = TextUtil::Join(format->Extensions(), ", ");
 			std::string name = format->Name();
 			name.resize(std::max<size_t>(name.size(), 10), ' ');
 			std::cout << "  " << name << format->Description() << (extensions.empty() ? "" : " (" + extensions + ")") << "\n";
@@ -271,21 +312,11 @@ namespace CommandLine {
 		PrintFormats(registry);
 
 		std::cout << "\n"
-					 "Options:\n"
-					 "  -o, --output <file>      Output file (default: the input name with the extension of the format; needs --format)\n"
-					 "  -f, --format <name>      Output format (default: from the extension of the output file)\n"
-					 "      --list-formats       List the supported output formats\n"
-					 "      --no-anim            Export no animations (skeleton and skinning are kept)\n"
-					 "      --no-textures        Do not write texture files; materials are exported without textures\n"
-					 "      --texture-dir <dir>  Directory for the texture files (default: the directory of the output file).\n"
-					 "                           The model refers to the textures by their file names only.\n"
-					 "      --left-handed        Write the model in the left-handed Direct3D system: mirror the Z axis\n"
-					 "      --right-handed       Write the model right-handed, like glTF: do not mirror. Without either option the\n"
-					 "                           format decides (see the notes of the formats below). The triangle winding is always\n"
-					 "                           written the way the format expects.\n"
-					 "      --srgb-colors        Write the material colors as sRGB (glTF has them linear)\n"
-					 "  -v, --verbose            Print details\n"
-					 "  -h, --help               Show this help\n";
+					 "Options:\n";
+
+		for (const CommonOption &option : CommonOptions()) {
+			PrintOption(option.spec);
+		}
 
 		for (const auto &format : registry.Formats()) {
 			const std::vector<Formats::OptionSpec> options = format->Options();
@@ -295,22 +326,7 @@ namespace CommandLine {
 			}
 
 			for (const Formats::OptionSpec &spec : options) {
-				std::string label = spec.shortName != '\0' ? std::string("-") + spec.shortName + ", " : std::string("    ");
-				label += "--" + spec.name + (spec.TakesValue() ? " <" + spec.valueName + ">" : std::string());
-				label.resize(std::max<size_t>(label.size() + 1, 25), ' ');
-
-				// Víceřádkový text se zarovná pod první řádek
-				std::string help;
-
-				for (const char c : spec.help) {
-					help += c;
-
-					if (c == '\n') {
-						help += std::string(27, ' ');
-					}
-				}
-
-				std::cout << "  " << label << help << "\n";
+				PrintOption(spec);
 			}
 		}
 

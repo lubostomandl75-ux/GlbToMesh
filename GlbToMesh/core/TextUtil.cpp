@@ -194,6 +194,18 @@ namespace TextUtil {
 
 		return text;
 	}
+
+	std::string Join(const std::vector<std::string> &items, const std::string &separator)
+	{
+		std::string result;
+
+		for (const std::string &item : items) {
+			result += (result.empty() ? "" : separator) + item;
+		}
+
+		return result;
+	}
+
 	std::u16string ToUtf16(const std::string &text)
 	{
 		const std::string utf8 = ToUtf8(text);
