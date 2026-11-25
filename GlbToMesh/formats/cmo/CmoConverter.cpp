@@ -244,7 +244,7 @@ namespace CmoConvert {
 				}
 
 				Cmo::Clip clip;
-				clip.name = animation.name.empty() ? "Clip_" + std::to_string(a) : animation.name;
+				clip.name = ExportUtil::ClipName(animation, a);
 				clip.record.startTime = 0.0f;
 				clip.record.endTime = static_cast<float>(maxTime - minTime);
 

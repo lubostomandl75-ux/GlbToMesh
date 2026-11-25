@@ -382,7 +382,7 @@ namespace SdkMeshConvert {
 
 			for (size_t animationIndex = 0; animationIndex < this->scene.animations.size(); ++animationIndex) {
 				const Gltf::Animation &animation = this->scene.animations[animationIndex];
-				const std::string clipName = animation.name.empty() ? "Clip_" + std::to_string(animationIndex) : TextUtil::ToUtf8(animation.name);
+				const std::string clipName = TextUtil::ToUtf8(ExportUtil::ClipName(animation, animationIndex));
 
 				// Kanály podle uzlů; uzel bez snímku (mimo vybranou scénu) animovat nejde
 				std::unordered_map<int, NodeAnimation> byNode;
@@ -492,7 +492,7 @@ namespace SdkMeshConvert {
 		{
 			for (const Gltf::Primitive &primitive : mesh.primitives) {
 
-				if (primitive.triangles.size() >= 3 && !primitive.positions.empty()) {
+				if (ExportUtil::IsUsable(primitive)) {
 					return true;
 				}
 			}
@@ -509,7 +509,7 @@ namespace SdkMeshConvert {
 
 			for (const Gltf::Primitive &primitive : this->scene.meshes[static_cast<size_t>(node.mesh)].primitives) {
 
-				if (primitive.triangles.size() >= 3 && !primitive.positions.empty() && !primitive.joints.empty() && !primitive.weights.empty()) {
+				if (ExportUtil::IsUsable(primitive) && !primitive.joints.empty() && !primitive.weights.empty()) {
 					return true;
 				}
 			}
@@ -805,7 +805,7 @@ namespace SdkMeshConvert {
 
 			for (const Gltf::Primitive &primitive : mesh.primitives) {
 
-				if (primitive.triangles.size() >= 3 && !primitive.positions.empty()) {
+				if (ExportUtil::IsUsable(primitive)) {
 					items.push_back({&primitive, this->Prepare(primitive)});
 				}
 			}

@@ -147,6 +147,16 @@ namespace ExportUtil {
 		return a.offset[0] == b.offset[0] && a.offset[1] == b.offset[1] && a.rotation == b.rotation && a.scale[0] == b.scale[0] && a.scale[1] == b.scale[1];
 	}
 
+	bool IsUsable(const Gltf::Primitive &primitive)
+	{
+		return primitive.triangles.size() >= 3 && !primitive.positions.empty();
+	}
+
+	std::string ClipName(const Gltf::Animation &animation, size_t index)
+	{
+		return animation.name.empty() ? "Clip_" + std::to_string(index) : animation.name;
+	}
+
 	const Gltf::TextureRef *SceneConverter::PickUvTransform(
 		std::initializer_list<const Gltf::TextureRef *> refs, const std::function<bool(const Gltf::TextureRef &)> &accept, const std::string &name, const std::string &reason
 	)

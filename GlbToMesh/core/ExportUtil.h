@@ -105,6 +105,12 @@ namespace ExportUtil {
 	/// Obě textury mají stejnou transformaci UV (posun, rotaci a měřítko)
 	bool SameUvTransform(const Gltf::TextureRef &a, const Gltf::TextureRef &b);
 
+	/// Primitivum jde exportovat: má pozice a aspoň jeden trojúhelník
+	bool IsUsable(const Gltf::Primitive &primitive);
+
+	/// Název animačního klipu: název animace, nebo "Clip_<pořadí>", když animace název nemá
+	std::string ClipName(const Gltf::Animation &animation, size_t index);
+
 	/// Volby převodu společné všem formátům; převodník formátu z nich odvodí vlastní strukturu voleb
 	struct ConvertOptions {
 		/// Vytvořit data v levotočivé soustavě Direct3D (zrcadlení osy Z); výchozí soustavu určuje formát (viz SetCommon)
