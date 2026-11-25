@@ -55,6 +55,76 @@ namespace ExportUtil {
 		}
 	}
 
+	PhongMaterial MakePhongMaterial(const Gltf::Material &src, float alpha, bool srgbColors, float powerWithoutSpecular)
+	{
+		const auto color = [srgbColors](float c) { return srgbColors ? LinearToSrgb(c) : c; };
+
+		float diffuse[3];
+
+		for (size_t c = 0; c < 3; ++c) {
+			diffuse[c] = Clamp01(src.baseColor[c]);
+		}
+
+		// Odlesk: z drsnosti (Blinn-Phong: roughness = sqrt(2 / (n + 2))) a základní odrazivosti; matné materiály bez odlesku
+		float specular[3] = {0.0f, 0.0f, 0.0f};
+		float power = powerWithoutSpecular;
+		float roughness = src.roughness;
+
+		if (src.specularGlossiness) {
+			roughness = 1.0f - Clamp01(src.glossiness);
+
+			for (size_t c = 0; c < 3; ++c) {
+				specular[c] = Clamp01(src.specular[c]);
+			}
+		}
+		else {
+			const float metallic = Clamp01(src.metallic);
+
+			for (size_t c = 0; c < 3; ++c) {
+				specular[c] = 0.04f * (1.0f - metallic) + diffuse[c] * metallic;
+			}
+		}
+
+		roughness = Clamp01(roughness);
+
+		if (src.unlit || roughness >= 0.95f) {
+			specular[0] = specular[1] = specular[2] = 0.0f;
+		}
+		else {
+			power = std::clamp(2.0f / (std::max(roughness, 0.045f) * std::max(roughness, 0.045f)) - 2.0f, 1.0f, 1000.0f);
+		}
+
+		PhongMaterial m;
+
+		for (size_t c = 0; c < 3; ++c) {
+			m.diffuse[c] = color(diffuse[c]);
+			m.ambient[c] = color(diffuse[c] * 0.2f);
+			m.specular[c] = color(specular[c]);
+			m.emissive[c] = std::isfinite(src.emissive[c]) ? color(std::max(src.emissive[c], 0.0f)) : 0.0f;
+		}
+
+		m.diffuse[3] = alpha;
+		m.ambient[3] = 1.0f; // ambient.w = 1: blok barev není "nevyplněný"
+		m.specular[3] = 1.0f;
+		m.emissive[3] = 0.0f;
+		m.power = power;
+
+		return m;
+	}
+
+	float SceneConverter::MaterialAlpha(const Gltf::Material &src, const std::string &keyName, const std::string &displayName, const std::string &formatName)
+	{
+		if (src.alphaMode == Gltf::AlphaMode::Blend) {
+			return Clamp01(src.baseColor[3]);
+		}
+
+		if (src.alphaMode == Gltf::AlphaMode::Mask) {
+			this->WarnOnce("mask:" + keyName, "Material '" + displayName + "' uses alphaMode MASK, which " + formatName + " does not support - exported as opaque.");
+		}
+
+		return 1.0f;
+	}
+
 	UvTransform MakeUvTransform(const Gltf::TextureRef &ref)
 	{
 		UvTransform t;

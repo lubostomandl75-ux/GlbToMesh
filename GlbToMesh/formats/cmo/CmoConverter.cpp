@@ -47,13 +47,10 @@ namespace CmoConvert {
 
 	namespace {
 
-		using ExportUtil::Clamp01;
-		using ExportUtil::LinearToSrgb;
 		using ExportUtil::NodeAnimation;
 		using ExportUtil::Prepared;
 		using ExportUtil::Trs;
 		using MathUtil::Mat4;
-		using MathUtil::Quat;
 		using MathUtil::Vec3;
 
 		/// Nejvyšší počet vrcholů jednoho vertex bufferu (indexy jsou 16bitové a 0xFFFF označuje odebraný trojúhelník)
@@ -124,67 +121,16 @@ namespace CmoConvert {
 			out.name = name;
 			out.pixelShader = this->options.pixelShader;
 
-			const auto color = [this](float c) { return this->options.srgbColors ? LinearToSrgb(c) : c; };
-
-			// Průhlednost: jen režim BLEND; MASK (ořez podle alfa) CMO nezná
-			float alpha = 1.0f;
-
-			if (src.alphaMode == Gltf::AlphaMode::Blend) {
-				alpha = Clamp01(src.baseColor[3]);
-			}
-			else if (src.alphaMode == Gltf::AlphaMode::Mask) {
-				this->WarnOnce("mask:" + name, "Material '" + name + "' uses alphaMode MASK, which CMO does not support - exported as opaque.");
-			}
-
-			float diffuse[3];
-
-			for (size_t c = 0; c < 3; ++c) {
-				diffuse[c] = Clamp01(src.baseColor[c]);
-			}
-
-			// Odlesk: z drsnosti (Blinn-Phong: roughness = sqrt(2 / (n + 2))) a základní odrazivosti; matné materiály bez odlesku
-			float specular[3] = {0.0f, 0.0f, 0.0f};
-			float power = 1.0f;
-			float roughness = src.roughness;
-
-			if (src.specularGlossiness) {
-				roughness = 1.0f - Clamp01(src.glossiness);
-
-				for (size_t c = 0; c < 3; ++c) {
-					specular[c] = Clamp01(src.specular[c]);
-				}
-			}
-			else {
-				const float metallic = Clamp01(src.metallic);
-
-				for (size_t c = 0; c < 3; ++c) {
-					specular[c] = 0.04f * (1.0f - metallic) + diffuse[c] * metallic;
-				}
-			}
-
-			roughness = Clamp01(roughness);
-
-			if (src.unlit || roughness >= 0.95f) {
-				specular[0] = specular[1] = specular[2] = 0.0f;
-			}
-			else {
-				power = std::clamp(2.0f / (std::max(roughness, 0.045f) * std::max(roughness, 0.045f)) - 2.0f, 1.0f, 1000.0f);
-			}
+			// Průhlednost: jen režim BLEND; MASK (ořez podle alfa) CMO nezná. Bez odlesku zapisuje CMO exponent 1.
+			const float alpha = this->MaterialAlpha(src, name, name, "CMO");
+			const ExportUtil::PhongMaterial phong = ExportUtil::MakePhongMaterial(src, alpha, this->options.srgbColors, 1.0f);
 
 			Cmo::MaterialRecord &m = out.record;
-
-			for (size_t c = 0; c < 3; ++c) {
-				m.diffuse[c] = color(diffuse[c]);
-				m.ambient[c] = color(diffuse[c] * 0.2f);
-				m.specular[c] = color(specular[c]);
-				m.emissive[c] = std::isfinite(src.emissive[c]) ? color(std::max(src.emissive[c], 0.0f)) : 0.0f;
-			}
-
-			m.diffuse[3] = alpha;
-			m.ambient[3] = 1.0f;
-			m.specular[3] = 1.0f;
-			m.emissive[3] = 0.0f;
-			m.specularPower = power;
+			std::copy_n(phong.diffuse, 4, m.diffuse);
+			std::copy_n(phong.ambient, 4, m.ambient);
+			std::copy_n(phong.specular, 4, m.specular);
+			std::copy_n(phong.emissive, 4, m.emissive);
+			m.specularPower = phong.power;
 
 			for (size_t i = 0; i < 16; ++i) {
 				m.uvTransform[i] = (i % 5 == 0) ? 1.0f : 0.0f;

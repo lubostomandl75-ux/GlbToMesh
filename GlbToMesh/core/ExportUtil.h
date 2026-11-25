@@ -72,6 +72,28 @@ namespace ExportUtil {
 		}
 	};
 
+	/// Barvy a lesk materiálu Blinn-Phong odvozené z materiálu glTF (RGBA; barvy případně už v sRGB)
+	struct PhongMaterial {
+		float diffuse[4];  // w = průhlednost
+		float ambient[4];  // w = 1
+		float specular[4]; // w = 1
+		float emissive[4]; // w = 0
+		float power;	   // exponent odlesku
+	};
+
+	/**
+	 * Převede materiál glTF (metallic-roughness nebo specular-glossiness) na materiál Blinn-Phong. Odlesk se odvodí z drsnosti
+	 * (roughness = sqrt(2 / (n + 2))) a základní odrazivosti; matné a neosvětlené (unlit) materiály jsou bez odlesku.
+	 *
+	 * @param const Gltf::Material& src Materiál glTF
+	 * @param float alpha Průhlednost (viz SceneConverter::MaterialAlpha)
+	 * @param bool srgbColors Barvy zapsat jako sRGB
+	 * @param float powerWithoutSpecular Exponent odlesku pro materiál bez odlesku (podle zvyklosti formátu)
+	 *
+	 * @return PhongMaterial Barvy a exponent odlesku
+	 */
+	PhongMaterial MakePhongMaterial(const Gltf::Material &src, float alpha, bool srgbColors, float powerWithoutSpecular);
+
 	/// Afinní transformace souřadnic UV: u' = m[0] u + m[1] v + m[2], v' = m[3] u + m[4] v + m[5]
 	struct UvTransform {
 		double m[6] = {1.0, 0.0, 0.0, 0.0, 1.0, 0.0};
@@ -183,6 +205,18 @@ namespace ExportUtil {
 
 		/// Vypíše varování jen jednou pro daný klíč
 		void WarnOnce(const std::string &key, const std::string &message);
+
+		/**
+		 * Průhlednost materiálu: v režimu BLEND alfa základní barvy, jinak 1. Režim MASK (ořez podle alfa) ohlásí varováním.
+		 *
+		 * @param const Gltf::Material& src Materiál glTF
+		 * @param const std::string& keyName Název materiálu ve výstupu (klíč jednorázového varování)
+		 * @param const std::string& displayName Název materiálu v hlášení
+		 * @param const std::string& formatName Formát v hlášení (např. "CMO")
+		 *
+		 * @return float Průhlednost 0 až 1
+		 */
+		float MaterialAlpha(const Gltf::Material &src, const std::string &keyName, const std::string &displayName, const std::string &formatName);
 
 		/// Varování o vlastnostech geometrie, které výstupní formát neumí: morph targety a víc než 4 vlivy kostí na vrchol
 		void WarnGeometryLimits(const std::string &formatName);

@@ -56,8 +56,6 @@ namespace SdkMeshConvert {
 
 	namespace {
 
-		using ExportUtil::Clamp01;
-		using ExportUtil::LinearToSrgb;
 		using ExportUtil::NodeAnimation;
 		using ExportUtil::Prepared;
 		using ExportUtil::Trs;
@@ -306,14 +304,7 @@ namespace SdkMeshConvert {
 			out.name = UniqueName(this->usedMaterialNames, wanted, SdkMesh::MAX_MATERIAL_NAME - 1);
 
 			// Průhlednost: jen režim BLEND; MASK (ořez podle alfa) SDKMESH nezná
-			float alpha = 1.0f;
-
-			if (src.alphaMode == Gltf::AlphaMode::Blend) {
-				alpha = Clamp01(src.baseColor[3]);
-			}
-			else if (src.alphaMode == Gltf::AlphaMode::Mask) {
-				this->WarnOnce("mask:" + out.name, "Material '" + sourceName + "' uses alphaMode MASK, which SDKMESH does not support - exported as opaque.");
-			}
+			const float alpha = this->MaterialAlpha(src, out.name, sourceName, "SDKMESH");
 
 			if (src.doubleSided) {
 				this->WarnOnce("doublesided", "Some materials are double-sided; SDKMESH has no such flag, so DirectXTK draws them single-sided (draw the model with culling disabled if needed).");
@@ -347,51 +338,14 @@ namespace SdkMeshConvert {
 				return this->materialRecords[key];
 			}
 
-			const auto color = [this](float c) { return this->options.srgbColors ? LinearToSrgb(c) : c; };
-
-			float diffuse[3];
-
-			for (size_t c = 0; c < 3; ++c) {
-				diffuse[c] = Clamp01(src.baseColor[c]);
-			}
-
-			// Odlesk: z drsnosti (Blinn-Phong: roughness = sqrt(2 / (n + 2))) a základní odrazivosti; matné materiály bez odlesku
-			float specular[3] = {0.0f, 0.0f, 0.0f};
-			float power = 0.0f;
-			float roughness = src.roughness;
-
-			if (src.specularGlossiness) {
-				roughness = 1.0f - Clamp01(src.glossiness);
-
-				for (size_t c = 0; c < 3; ++c) {
-					specular[c] = Clamp01(src.specular[c]);
-				}
-			}
-			else {
-				const float metallic = Clamp01(src.metallic);
-
-				for (size_t c = 0; c < 3; ++c) {
-					specular[c] = 0.04f * (1.0f - metallic) + diffuse[c] * metallic;
-				}
-			}
-
-			roughness = Clamp01(roughness);
-
-			if (src.unlit || roughness >= 0.95f) {
-				specular[0] = specular[1] = specular[2] = 0.0f;
-			}
-			else {
-				// DirectXTK bere odlesek jen při Power > 0
-				power = std::clamp(2.0f / (std::max(roughness, 0.045f) * std::max(roughness, 0.045f)) - 2.0f, 1.0f, 1000.0f);
-			}
-
-			out.diffuse = {color(diffuse[0]), color(diffuse[1]), color(diffuse[2]), alpha};
-			out.ambient = {color(diffuse[0] * 0.2f), color(diffuse[1] * 0.2f), color(diffuse[2] * 0.2f), 1.0f}; // ambient.w = 1: blok barev není "nevyplněný"
-			out.specular = {color(specular[0]), color(specular[1]), color(specular[2]), 1.0f};
-
-			const auto emissive = [&](size_t c) { return std::isfinite(src.emissive[c]) ? color(std::max(src.emissive[c], 0.0f)) : 0.0f; };
-			out.emissive = {emissive(0), emissive(1), emissive(2), 0.0f};
-			out.power = power;
+			// Verze 101 (Blinn-Phong); bez odlesku exponent 0, protože DirectXTK bere odlesk jen při Power > 0
+			const ExportUtil::PhongMaterial phong = ExportUtil::MakePhongMaterial(src, alpha, this->options.srgbColors, 0.0f);
+			const auto float4 = [](const float (&v)[4]) { return SdkMesh::Float4 {v[0], v[1], v[2], v[3]}; };
+			out.diffuse = float4(phong.diffuse);
+			out.ambient = float4(phong.ambient);
+			out.specular = float4(phong.specular);
+			out.emissive = float4(phong.emissive);
+			out.power = phong.power;
 
 			// Textury verze 101: difuzní a normálová; ostatní nemají v SDKMESH obdobu
 			out.diffuseTexture = this->TextureFile(src.baseColorTexture.image, out.name);
