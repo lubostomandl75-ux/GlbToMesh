@@ -16,6 +16,7 @@
 // Hlavičkové soubory C++
 #include <algorithm>
 #include <cstdint>
+#include <functional>
 #include <initializer_list>
 #include <limits>
 #include <map>
@@ -70,6 +71,17 @@ namespace ExportUtil {
 			return {(this->max.x - this->min.x) * 0.5, (this->max.y - this->min.y) * 0.5, (this->max.z - this->min.z) * 0.5};
 		}
 	};
+
+	/// Afinní transformace souřadnic UV: u' = m[0] u + m[1] v + m[2], v' = m[3] u + m[4] v + m[5]
+	struct UvTransform {
+		double m[6] = {1.0, 0.0, 0.0, 0.0, 1.0, 0.0};
+	};
+
+	/// Transformace UV z KHR_texture_transform textury (posun, rotace, měřítko); textura bez transformace dá jednotkovou
+	UvTransform MakeUvTransform(const Gltf::TextureRef &ref);
+
+	/// Obě textury mají stejnou transformaci UV (posun, rotaci a měřítko)
+	bool SameUvTransform(const Gltf::TextureRef &a, const Gltf::TextureRef &b);
 
 	/// Volby převodu společné všem formátům; převodník formátu z nich odvodí vlastní strukturu voleb
 	struct ConvertOptions {
@@ -194,6 +206,22 @@ namespace ExportUtil {
 		 * @param const std::string& reason Důvod v hlášení (např. "CMO has just one")
 		 */
 		void WarnTexCoordSet(std::initializer_list<const Gltf::TextureRef *> refs, const std::string &keyName, const std::string &displayName, const std::string &reason);
+
+		/**
+		 * Vybere texturu, jejíž transformace UV (KHR_texture_transform) platí pro celý materiál: první v pořadí, která transformaci má
+		 * a kterou formát přijme. Když další taková textura má jinou transformaci, vypíše varování.
+		 *
+		 * @param std::initializer_list<const Gltf::TextureRef*> refs Textury v pořadí přednosti
+		 * @param const std::function<bool(const Gltf::TextureRef&)>& accept Další podmínka formátu (volá se jen pro textury
+		 *        s obrázkem a transformací); prázdná = přijme každou
+		 * @param const std::string& name Název materiálu (klíč jednorázového varování i hlášení)
+		 * @param const std::string& reason Důvod v hlášení (např. "CMO has one per material")
+		 *
+		 * @return const Gltf::TextureRef* Vybraná textura; nullptr = žádná transformace
+		 */
+		const Gltf::TextureRef *PickUvTransform(
+			std::initializer_list<const Gltf::TextureRef *> refs, const std::function<bool(const Gltf::TextureRef &)> &accept, const std::string &name, const std::string &reason
+		);
 
 		/// Podrobnost pro --verbose: materiál bez osvětlení (KHR_materials_unlit) se zapíše jako standardní materiál bez odlesku
 		static void NoteUnlit(const Gltf::Material &src, const std::string &displayName);

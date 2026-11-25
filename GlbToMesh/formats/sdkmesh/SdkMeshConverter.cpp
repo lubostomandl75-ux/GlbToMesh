@@ -273,30 +273,13 @@ namespace SdkMeshConvert {
 		/// Textura, jejíž transformace UV (KHR_texture_transform) se zapíše do souřadnic UV vrcholů; SDKMESH nemá matici UV
 		const Gltf::TextureRef *Converter::UvTransformSource(const Gltf::Material &material)
 		{
-			const Gltf::TextureRef *source = nullptr;
 			const std::string name = material.name;
 
-			for (const Gltf::TextureRef *ref : {&material.baseColorTexture, &material.normalTexture, &material.emissiveTexture}) {
+			// Textura se musí opravdu zapsat (TextureFile ji zároveň zaregistruje); emisivní textura se ve verzi 101 neexportuje,
+			// takže její transformace nic neznamená
+			const auto accept = [&](const Gltf::TextureRef &ref) { return !this->TextureFile(ref.image, name).empty() && !(&ref == &material.emissiveTexture && !this->options.pbr); };
 
-				if (ref->image < 0 || !ref->hasTransform || this->TextureFile(ref->image, name).empty()) {
-					continue;
-				}
-
-				// Emisivní textura se ve verzi 101 neexportuje, takže její transformace nic neznamená
-				if (ref == &material.emissiveTexture && !this->options.pbr) {
-					continue;
-				}
-
-				if (!source) {
-					source = ref;
-				}
-				else if (ref->offset[0] != source->offset[0] || ref->offset[1] != source->offset[1] || ref->rotation != source->rotation || ref->scale[0] != source->scale[0] ||
-						 ref->scale[1] != source->scale[1]) {
-					this->WarnOnce("uvdiff:" + name, "Material '" + name + "': the textures have different UV transforms, but SDKMESH has one set of UVs - the first one is used.");
-				}
-			}
-
-			return source;
+			return this->PickUvTransform({&material.baseColorTexture, &material.normalTexture, &material.emissiveTexture}, accept, name, "SDKMESH has one set of UVs");
 		}
 
 		uint32_t Converter::EnsureMaterial(int index, bool skinned, bool vertexColor)
@@ -1040,17 +1023,8 @@ namespace SdkMeshConvert {
 				const Prepared &p = items[i].prepared;
 				const Gltf::Material &material = this->SourceMaterial(items[i].source->material);
 				const Gltf::TextureRef *uvSource = this->UvTransformSource(material);
-				double uvMatrix[6] = {1.0, 0.0, 0.0, 0.0, 1.0, 0.0}; // u' = a u + b v + c, v' = d u + e v + f
-
-				if (uvSource) {
-					const double c = std::cos(uvSource->rotation), s = std::sin(uvSource->rotation);
-					uvMatrix[0] = c * uvSource->scale[0];
-					uvMatrix[1] = s * uvSource->scale[1];
-					uvMatrix[2] = uvSource->offset[0];
-					uvMatrix[3] = -s * uvSource->scale[0];
-					uvMatrix[4] = c * uvSource->scale[1];
-					uvMatrix[5] = uvSource->offset[1];
-				}
+				const ExportUtil::UvTransform uv = uvSource ? ExportUtil::MakeUvTransform(*uvSource) : ExportUtil::UvTransform();
+				const double *uvMatrix = uv.m; // u' = a u + b v + c, v' = d u + e v + f
 
 				for (size_t v = 0; v < p.vertexCount; ++v) {
 					uint8_t *dst = &vb.data[(base + v) * layout.stride];

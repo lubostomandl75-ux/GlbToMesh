@@ -198,30 +198,17 @@ namespace CmoConvert {
 			this->WarnUnsupportedPbrTextures(src, name, name, "CMO");
 
 			// Transformace UV: CMO má jednu na materiál, bere se z první textury, která ji má
-			const Gltf::TextureRef *transformSource = nullptr;
-
-			for (const Gltf::TextureRef *ref : {&src.baseColorTexture, &src.normalTexture, &src.emissiveTexture}) {
-
-				if (ref->image >= 0 && ref->hasTransform) {
-
-					if (!transformSource) {
-						transformSource = ref;
-					}
-					else if (ref->offset[0] != transformSource->offset[0] || ref->offset[1] != transformSource->offset[1] || ref->rotation != transformSource->rotation ||
-							 ref->scale[0] != transformSource->scale[0] || ref->scale[1] != transformSource->scale[1]) {
-						this->WarnOnce("uvdiff:" + name, "Material '" + name + "': the textures have different UV transforms, but CMO has one per material - the first one is used.");
-					}
-				}
-			}
+			const Gltf::TextureRef *transformSource = this->PickUvTransform({&src.baseColorTexture, &src.normalTexture, &src.emissiveTexture}, nullptr, name, "CMO has one per material");
 
 			if (transformSource) {
-				const double c = std::cos(transformSource->rotation), s = std::sin(transformSource->rotation);
-				m.uvTransform[0] = static_cast<float>(c * transformSource->scale[0]);
-				m.uvTransform[1] = static_cast<float>(-s * transformSource->scale[0]);
-				m.uvTransform[4] = static_cast<float>(s * transformSource->scale[1]);
-				m.uvTransform[5] = static_cast<float>(c * transformSource->scale[1]);
-				m.uvTransform[12] = static_cast<float>(transformSource->offset[0]);
-				m.uvTransform[13] = static_cast<float>(transformSource->offset[1]);
+				// Matice UV v CMO je řádková (u', v') = (u, v, 1) * M: sloupec výsledku u' leží v prvcích 0, 4 a 12, v' v prvcích 1, 5 a 13
+				const ExportUtil::UvTransform t = ExportUtil::MakeUvTransform(*transformSource);
+				m.uvTransform[0] = static_cast<float>(t.m[0]);
+				m.uvTransform[1] = static_cast<float>(t.m[3]);
+				m.uvTransform[4] = static_cast<float>(t.m[1]);
+				m.uvTransform[5] = static_cast<float>(t.m[4]);
+				m.uvTransform[12] = static_cast<float>(t.m[2]);
+				m.uvTransform[13] = static_cast<float>(t.m[5]);
 			}
 
 			this->WarnTexCoordSet({&src.baseColorTexture, &src.normalTexture, &src.emissiveTexture}, name, name, "CMO has just one");

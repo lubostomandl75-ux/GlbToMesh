@@ -55,6 +55,51 @@ namespace ExportUtil {
 		}
 	}
 
+	UvTransform MakeUvTransform(const Gltf::TextureRef &ref)
+	{
+		UvTransform t;
+
+		if (ref.hasTransform) {
+			const double c = std::cos(ref.rotation), s = std::sin(ref.rotation);
+			t.m[0] = c * ref.scale[0];
+			t.m[1] = s * ref.scale[1];
+			t.m[2] = ref.offset[0];
+			t.m[3] = -s * ref.scale[0];
+			t.m[4] = c * ref.scale[1];
+			t.m[5] = ref.offset[1];
+		}
+
+		return t;
+	}
+
+	bool SameUvTransform(const Gltf::TextureRef &a, const Gltf::TextureRef &b)
+	{
+		return a.offset[0] == b.offset[0] && a.offset[1] == b.offset[1] && a.rotation == b.rotation && a.scale[0] == b.scale[0] && a.scale[1] == b.scale[1];
+	}
+
+	const Gltf::TextureRef *SceneConverter::PickUvTransform(
+		std::initializer_list<const Gltf::TextureRef *> refs, const std::function<bool(const Gltf::TextureRef &)> &accept, const std::string &name, const std::string &reason
+	)
+	{
+		const Gltf::TextureRef *source = nullptr;
+
+		for (const Gltf::TextureRef *ref : refs) {
+
+			if (ref->image < 0 || !ref->hasTransform || (accept && !accept(*ref))) {
+				continue;
+			}
+
+			if (!source) {
+				source = ref;
+			}
+			else if (!SameUvTransform(*ref, *source)) {
+				this->WarnOnce("uvdiff:" + name, "Material '" + name + "': the textures have different UV transforms, but " + reason + " - the first one is used.");
+			}
+		}
+
+		return source;
+	}
+
 	void SceneConverter::WarnGeometryLimits(const std::string &formatName)
 	{
 		if (this->scene.morphTargetPrimitives > 0) {
