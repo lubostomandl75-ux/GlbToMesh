@@ -66,6 +66,9 @@
     <ClCompile Include="formats\sdkmesh\SdkMeshWriter.cpp">
       <Filter>Formats\SDKMESH</Filter>
     </ClCompile>
+    <ClCompile Include="AppInfo.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="CommandLine.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -133,6 +136,9 @@
     </ClInclude>
     <ClInclude Include="formats\sdkmesh\SdkMeshWriter.h">
       <Filter>Formats\SDKMESH</Filter>
+    </ClInclude>
+    <ClInclude Include="AppInfo.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="CommandLine.h">
       <Filter>Header Files</Filter>

@@ -14,6 +14,7 @@
 #include <vector>
 
 // Hlavičkové soubory projektu
+#include "AppInfo.h"
 #include "CommandLine.h"
 
 #include "core/GltfLoader.h"
@@ -62,9 +63,17 @@ namespace {
 		Formats::FormatRegistry registry;
 		CommandLine::Settings settings;
 
+		AppInfo::PrintBanner();
+
 		try {
 			Formats::RegisterAllFormats(registry);
-			CommandLine::Parse(args, registry, settings);
+			// Spuštění bez argumentů zobrazí nápovědu
+			if (args.empty()) {
+				settings.help = true;
+			}
+			else {
+				CommandLine::Parse(args, registry, settings);
+			}
 
 			if (settings.help) {
 				CommandLine::PrintUsage(registry);

@@ -67,7 +67,7 @@ BEGIN
     BEGIN
         BLOCK "040504b0"
         BEGIN
-            VALUE "CompanyName", "LubomÃ­r Tomandl - Angry Developer Studio"
+            VALUE "CompanyName", "Lubomír Tomandl - Angry Developer Studio"
             VALUE "FileDescription", "Console application that converts glTF/GLB models to Direct3D mesh formats (CMO, SDKMESH)"
             VALUE "FileVersion", "1.0.0.0"
             VALUE "InternalName", "GlbToMesh.exe"
