@@ -205,7 +205,7 @@ namespace SdkMeshConvert {
 		  public:
 			/// @param scene Načtená scéna (musí přežít převodník)
 			/// @param options Volby převodu (musí přežít převodník)
-			Converter(const Gltf::Scene &scene, const Options &options) : SceneConverter(scene, options.leftHanded, options.noTextures, options.modelName), options(options)
+			Converter(const Gltf::Scene &scene, const Options &options) : SceneConverter(scene, options), options(options)
 			{
 			}
 

@@ -74,12 +74,8 @@ namespace Cmo {
 			Formats::ExportResult Export(const Formats::ExportContext &context) const override
 			{
 				CmoConvert::Options options;
-				options.leftHanded = context.common.handedness == Formats::Handedness::Left; // Auto = pravotočivá soustava jako ve Visual Studiu
-				options.srgbColors = context.common.srgbColors;
-				options.noAnimations = context.common.noAnimations;
-				options.noTextures = context.common.noTextures;
+				options.SetCommon(context, false); // Auto = pravotočivá soustava jako ve Visual Studiu
 				options.pixelShader = context.options.Last("pixel-shader");
-				options.modelName = context.modelName;
 
 				CmoConvert::Result result = CmoConvert::Convert(context.scene, options);
 				const CmoConvert::Stats &stats = result.stats;

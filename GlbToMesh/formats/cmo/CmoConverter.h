@@ -17,30 +17,16 @@
 // Hlavičkové soubory projektu
 #include "CmoModel.h"
 
+#include "core/ExportUtil.h"
 #include "core/GltfScene.h"
 #include "core/OutputFormat.h"
 
 namespace CmoConvert {
 
-	/// Volby převodu
-	struct Options {
-		/// Vytvořit data v levotočivé soustavě Direct3D (zrcadlení osy Z). Výchozí je pravotočivá soustava jako ve Visual Studiu.
-		bool leftHanded = false;
-
-		/// Barvy materiálů zapsat jako sRGB (pro načítání s příznakem ModelLoader_MaterialColorsSRGB); glTF má barvy lineární
-		bool srgbColors = false;
-
-		/// Neexportovat animace (kostra a skinning zůstanou)
-		bool noAnimations = false;
-
-		/// Neexportovat textury (materiály zůstanou bez nich)
-		bool noTextures = false;
-
+	/// Volby převodu: společné volby (výchozí soustava je pravotočivá jako ve Visual Studiu) a volby CMO
+	struct Options : ExportUtil::ConvertOptions {
 		/// Název pixel shaderu zapsaný do materiálů (výchozí prázdný: DirectXTK použije vestavěný materiál)
 		std::string pixelShader;
-
-		/// Základ názvu pro textury bez vlastního názvu (obvykle název vstupního souboru)
-		std::string modelName = "model";
 	};
 
 	/// Počty vytvořených prvků (pro závěrečné shrnutí)

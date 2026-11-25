@@ -70,6 +70,40 @@ namespace ExportUtil {
 		}
 	};
 
+	/// Volby převodu společné všem formátům; převodník formátu z nich odvodí vlastní strukturu voleb
+	struct ConvertOptions {
+		/// Vytvořit data v levotočivé soustavě Direct3D (zrcadlení osy Z); výchozí soustavu určuje formát (viz SetCommon)
+		bool leftHanded = false;
+
+		/// Barvy materiálů zapsat jako sRGB (pro načítání s příznakem ModelLoader_MaterialColorsSRGB); glTF má barvy lineární
+		bool srgbColors = false;
+
+		/// Neexportovat animace (kostra a skinning zůstanou)
+		bool noAnimations = false;
+
+		/// Neexportovat textury (materiály zůstanou bez nich)
+		bool noTextures = false;
+
+		/// Základ názvu pro textury bez vlastního názvu (obvykle název vstupního souboru)
+		std::string modelName = "model";
+
+		/**
+		 * Nastaví společné volby podle kontextu exportu (přepínače příkazové řádky a název modelu).
+		 *
+		 * @param const Formats::ExportContext& context Kontext exportu
+		 * @param bool autoLeftHanded Soustava formátu, když uživatel žádnou nezvolil (Handedness::Auto): true = levotočivá
+		 */
+		void SetCommon(const Formats::ExportContext &context, bool autoLeftHanded)
+		{
+			const Formats::Handedness handedness = context.common.handedness;
+			this->leftHanded = handedness == Formats::Handedness::Left || (handedness == Formats::Handedness::Auto && autoLeftHanded);
+			this->srgbColors = context.common.srgbColors;
+			this->noAnimations = context.common.noAnimations;
+			this->noTextures = context.common.noTextures;
+			this->modelName = context.modelName;
+		}
+	};
+
 	/// Kanály jedné animace pro jeden uzel
 	struct NodeAnimation {
 		const Gltf::Channel *translation = nullptr;
@@ -115,11 +149,9 @@ namespace ExportUtil {
 	  protected:
 		/**
 		 * @param const Gltf::Scene& scene Načtená scéna (musí přežít převodník)
-		 * @param bool leftHanded Zrcadlit osu Z (levotočivá soustava Direct3D)
-		 * @param bool noTextures Neexportovat textury
-		 * @param const std::string& modelName Základ názvu pro textury bez vlastního názvu
+		 * @param const ConvertOptions& options Společné volby (použije se zrcadlení osy Z, vynechání textur a název modelu)
 		 */
-		SceneConverter(const Gltf::Scene &scene, bool leftHanded, bool noTextures, const std::string &modelName) : scene(scene), leftHanded(leftHanded), noTextures(noTextures), modelName(modelName)
+		SceneConverter(const Gltf::Scene &scene, const ConvertOptions &options) : scene(scene), leftHanded(options.leftHanded), noTextures(options.noTextures), modelName(options.modelName)
 		{
 			this->defaultMaterial.name = "Default";
 		}

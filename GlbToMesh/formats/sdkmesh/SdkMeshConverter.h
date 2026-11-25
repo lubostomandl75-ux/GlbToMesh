@@ -17,25 +17,14 @@
 // Hlavičkové soubory projektu
 #include "SdkMeshModel.h"
 
+#include "core/ExportUtil.h"
 #include "core/GltfScene.h"
 #include "core/OutputFormat.h"
 
 namespace SdkMeshConvert {
 
-	/// Volby převodu
-	struct Options {
-		/// Vytvořit data v levotočivé soustavě Direct3D (zrcadlení osy Z). Výchozí je pravotočivá soustava jako v glTF a v DirectXTK.
-		bool leftHanded = false;
-
-		/// Barvy materiálů zapsat jako sRGB (pro načítání s příznakem ModelLoader_MaterialColorsSRGB); glTF má barvy lineární
-		bool srgbColors = false;
-
-		/// Neexportovat animace
-		bool noAnimations = false;
-
-		/// Neexportovat textury (materiály zůstanou bez nich)
-		bool noTextures = false;
-
+	/// Volby převodu: společné volby (výchozí soustava je pravotočivá jako v glTF a v DirectXTK) a volby SDKMESH
+	struct Options : ExportUtil::ConvertOptions {
 		/// Zapsat soubor SDKMESH verze 200 s PBR materiály (albedo, normála, RMA, emisivní textura) místo verze 101 (Blinn-Phong)
 		bool pbr = false;
 
@@ -48,9 +37,6 @@ namespace SdkMeshConvert {
 
 		/// Počet klíčů za sekundu v souborech .sdkmesh_anim (animace glTF se vzorkují v pevných časech)
 		uint32_t animationFps = 30;
-
-		/// Základ názvu pro textury bez vlastního názvu (obvykle název vstupního souboru)
-		std::string modelName = "model";
 	};
 
 	/// Počty vytvořených prvků (pro závěrečné shrnutí)

@@ -151,14 +151,10 @@ namespace SdkMesh {
 			Formats::ExportResult Export(const Formats::ExportContext &context) const override
 			{
 				SdkMeshConvert::Options options;
-				options.leftHanded = context.common.handedness == Formats::Handedness::Left; // Auto = pravotočivá soustava jako v glTF a DirectXTK
-				options.srgbColors = context.common.srgbColors;
-				options.noAnimations = context.common.noAnimations;
-				options.noTextures = context.common.noTextures;
+				options.SetCommon(context, false); // Auto = pravotočivá soustava jako v glTF a DirectXTK
 				options.pbr = context.options.Has("pbr");
 				options.bakeTransforms = context.options.Has("bake-transforms");
 				options.animationFps = ParseAnimationFps(context.options);
-				options.modelName = context.modelName;
 
 				SdkMeshConvert::Result result = SdkMeshConvert::Convert(context.scene, options);
 				const SdkMeshConvert::Stats &stats = result.stats;
