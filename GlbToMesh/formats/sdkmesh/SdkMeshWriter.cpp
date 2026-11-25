@@ -27,59 +27,13 @@
 // Hlavičkové soubory projektu
 #include "SdkMeshWriter.h"
 
+#include "core/ByteWriter.h"
+
 namespace SdkMesh {
 
 	static_assert(std::endian::native == std::endian::little, "SDKMESH is little-endian; the writer assumes a little-endian host");
 
 	namespace {
-
-		/// Rostoucí paměťový buffer s pomocnými zápisy
-		class ByteBuffer
-		{
-		  public:
-			/// Aktuální velikost bufferu v bajtech
-			size_t Size() const
-			{
-				return this->bytes.size();
-			}
-
-			/// Připojí hodnotu (její paměťový obraz)
-			template <typename T> void Append(const T &value)
-			{
-				this->AppendBytes(&value, sizeof(T));
-			}
-
-			/// Připojí blok bajtů
-			void AppendBytes(const void *data, size_t size)
-			{
-				if (size == 0) {
-					return;
-				}
-
-				const size_t at = this->bytes.size();
-				this->bytes.resize(at + size);
-				std::memcpy(&this->bytes[at], data, size);
-			}
-
-			/// Doplní nulové bajty tak, aby velikost byla násobkem zarovnání
-			void PadTo(size_t alignment)
-			{
-				const size_t rest = this->bytes.size() % alignment;
-
-				if (rest != 0) {
-					this->bytes.resize(this->bytes.size() + (alignment - rest), 0);
-				}
-			}
-
-			/// Vydá obsah bufferu (buffer je potom prázdný)
-			std::vector<uint8_t> Take()
-			{
-				return std::move(this->bytes);
-			}
-
-		  private:
-			std::vector<uint8_t> bytes;
-		};
 
 		/// Struktura s vynulovanou pamětí včetně výplně mezi členy (zapisují se celé bajty)
 		template <typename T> T Zeroed()
@@ -391,7 +345,7 @@ namespace SdkMesh {
 		const uint64_t bufferSize = cursor - bufferStart;
 
 		// --- Zápis --------------------------------------------------------------------------------------------------
-		ByteBuffer out;
+		ExportUtil::ByteWriter out;
 
 		Header header = Zeroed<Header>();
 		header.Version = model.version;
@@ -502,8 +456,8 @@ namespace SdkMesh {
 		}
 
 		for (const Mesh &mesh : model.meshes) {
-			out.AppendBytes(mesh.subsets.data(), mesh.subsets.size() * sizeof(uint32_t));
-			out.AppendBytes(mesh.influences.data(), mesh.influences.size() * sizeof(uint32_t));
+			out.Records(mesh.subsets);
+			out.Records(mesh.influences);
 		}
 
 		out.PadTo(8);
@@ -519,7 +473,7 @@ namespace SdkMesh {
 				throw std::runtime_error("Internal error: the vertex buffer offset does not match");
 			}
 
-			out.AppendBytes(model.vertexBuffers[i].data.data(), model.vertexBuffers[i].data.size());
+			out.Records(model.vertexBuffers[i].data);
 		}
 
 		for (size_t i = 0; i < ibCount; ++i) {
@@ -531,7 +485,7 @@ namespace SdkMesh {
 			}
 
 			if (ib.wide) {
-				out.AppendBytes(ib.indices.data(), ib.indices.size() * sizeof(uint32_t));
+				out.Records(ib.indices);
 			}
 			else {
 				std::vector<uint16_t> narrow(ib.indices.size());
@@ -540,7 +494,7 @@ namespace SdkMesh {
 					narrow[k] = static_cast<uint16_t>(ib.indices[k]);
 				}
 
-				out.AppendBytes(narrow.data(), narrow.size() * sizeof(uint16_t));
+				out.Records(narrow);
 			}
 		}
 
@@ -572,7 +526,7 @@ namespace SdkMesh {
 			throw std::runtime_error("Animation '" + animation.name + "' is larger than 4 GB");
 		}
 
-		ByteBuffer out;
+		ExportUtil::ByteWriter out;
 
 		AnimationFileHeader header = Zeroed<AnimationFileHeader>();
 		header.Version = FILE_VERSION;

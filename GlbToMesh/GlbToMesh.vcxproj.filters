@@ -83,6 +83,9 @@
     <ClInclude Include="core\GltfLoader.h">
       <Filter>Core</Filter>
     </ClInclude>
+    <ClInclude Include="core\ByteWriter.h">
+      <Filter>Core</Filter>
+    </ClInclude>
     <ClInclude Include="core\GltfScene.h">
       <Filter>Core</Filter>
     </ClInclude>

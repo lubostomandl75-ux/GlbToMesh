@@ -16,25 +16,17 @@
 // Hlavičkové soubory projektu
 #include "CmoWriter.h"
 
+#include "core/ByteWriter.h"
 #include "core/TextUtil.h"
 
 namespace CmoWriter {
 
 	namespace {
 
-		/// Výstupní buffer se zápisem čísel, textů a záznamů ve formátu CMO
-		class Output
+		/// Výstupní buffer doplněný o čísla a texty ve formátu CMO
+		class Output : public ExportUtil::ByteWriter
 		{
 		  public:
-			std::vector<uint8_t> bytes;
-
-			/// Připojí surová data
-			void Raw(const void *data, size_t size)
-			{
-				const auto *p = static_cast<const uint8_t *>(data);
-				this->bytes.insert(this->bytes.end(), p, p + size);
-			}
-
 			/// Připojí 32bitové číslo (hodnota nad rozsah 32 bitů je chyba)
 			void U32(size_t value)
 			{
@@ -42,14 +34,13 @@ namespace CmoWriter {
 					throw std::runtime_error("A count in the CMO file exceeds 32 bits");
 				}
 
-				const uint32_t v = static_cast<uint32_t>(value);
-				this->Raw(&v, sizeof(v));
+				this->Append(static_cast<uint32_t>(value));
 			}
 
 			/// Připojí jeden bajt
 			void Byte(uint8_t value)
 			{
-				this->bytes.push_back(value);
+				this->Append(value);
 			}
 
 			/// Text: délka v znacích včetně ukončující nuly a znaky UTF-16 (jako ve Visual Studiu, prázdný text má délku 1)
@@ -59,20 +50,10 @@ namespace CmoWriter {
 				this->U32(wide.size() + 1);
 
 				for (const char16_t c : wide) {
-					const uint16_t unit = static_cast<uint16_t>(c);
-					this->Raw(&unit, sizeof(unit));
+					this->Append(static_cast<uint16_t>(c));
 				}
 
-				const uint16_t terminator = 0;
-				this->Raw(&terminator, sizeof(terminator));
-			}
-
-			/// Připojí pole záznamů (struktur bez výplně) v jednom bloku
-			template <typename T> void Records(const std::vector<T> &items)
-			{
-				if (!items.empty()) {
-					this->Raw(items.data(), items.size() * sizeof(T));
-				}
+				this->Append(uint16_t{0});
 			}
 		};
 
@@ -121,7 +102,7 @@ namespace CmoWriter {
 
 			for (const Cmo::Material &material : mesh.materials) {
 				out.Text(material.name);
-				out.Raw(&material.record, sizeof(material.record));
+				out.Append(material.record);
 				out.Text(material.pixelShader);
 
 				for (const std::string &texture : material.textures) {
@@ -193,14 +174,14 @@ namespace CmoWriter {
 				out.Records(mesh.skinBuffers[i]);
 			}
 
-			out.Raw(&mesh.extents, sizeof(mesh.extents));
+			out.Append(mesh.extents);
 
 			if (mesh.hasSkeleton) {
 				out.U32(mesh.bones.size());
 
 				for (const Cmo::Bone &bone : mesh.bones) {
 					out.Text(bone.name);
-					out.Raw(&bone.record, sizeof(bone.record));
+					out.Append(bone.record);
 				}
 
 				out.U32(mesh.clips.size());
@@ -209,12 +190,12 @@ namespace CmoWriter {
 					out.Text(clip.name);
 					Cmo::ClipRecord record = clip.record;
 					record.keys = static_cast<uint32_t>(clip.keys.size());
-					out.Raw(&record, sizeof(record));
+					out.Append(record);
 					out.Records(clip.keys);
 				}
 			}
 		}
 
-		return std::move(out.bytes);
+		return out.Take();
 	}
 }

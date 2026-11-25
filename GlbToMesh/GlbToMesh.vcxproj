@@ -103,6 +103,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="CommandLine.h" />
+    <ClInclude Include="core\ByteWriter.h" />
     <ClInclude Include="core\ExportUtil.h" />
     <ClInclude Include="core\FileUtil.h" />
     <ClInclude Include="core\GltfLoader.h" />
