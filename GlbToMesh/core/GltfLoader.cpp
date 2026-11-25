@@ -18,6 +18,7 @@
 #include <fstream>
 #include <limits>
 #include <map>
+#include <optional>
 #include <set>
 #include <stdexcept>
 
@@ -45,6 +46,14 @@ namespace Gltf {
 
 		/// Nejvyšší počet prvků jednoho akcesoru (chrání před paměťovou bombou v poškozených souborech)
 		constexpr size_t MAX_ACCESSOR_COUNT = size_t(1) << 27;
+
+		/// Odmítne akcesor s více prvky, než je MAX_ACCESSOR_COUNT
+		void CheckAccessorSize(const gltf::Accessor &accessor, const char *what)
+		{
+			if (accessor.count > MAX_ACCESSOR_COUNT) {
+				throw std::runtime_error(std::string(what) + ": the accessor has too many elements (" + std::to_string(accessor.count) + ")");
+			}
+		}
 
 		/// Čtení souborů vedle dokumentu; nepovoluje cesty mimo adresář dokumentu
 		class FileStreamReader : public gltf::IStreamReader
@@ -178,9 +187,7 @@ namespace Gltf {
 				throw std::runtime_error(std::string(what) + ": the accessor has " + std::to_string(ComponentCount(accessor.type)) + " components, " + std::to_string(expectedComponents) + " expected");
 			}
 
-			if (accessor.count > MAX_ACCESSOR_COUNT) {
-				throw std::runtime_error(std::string(what) + ": the accessor has too many elements (" + std::to_string(accessor.count) + ")");
-			}
+			CheckAccessorSize(accessor, what);
 
 			std::vector<float> values;
 
@@ -229,9 +236,7 @@ namespace Gltf {
 				throw std::runtime_error("Indices: the accessor is not a scalar");
 			}
 
-			if (accessor.count > MAX_ACCESSOR_COUNT) {
-				throw std::runtime_error("Indices: the accessor has too many elements (" + std::to_string(accessor.count) + ")");
-			}
+			CheckAccessorSize(accessor, "Indices");
 
 			switch (accessor.componentType) {
 				case gltf::COMPONENT_UNSIGNED_BYTE: {
@@ -253,6 +258,33 @@ namespace Gltf {
 
 		// -----------------------------------------------------------------------------------------------------------
 		// Textury a materiály
+
+		/// Cesta k externímu souboru z URI obrázku (po dekódování procent); prázdné URI a data URI cestu nemají
+		std::optional<fs::path> ExternalUriPath(const std::string &uri)
+		{
+			if (uri.empty() || uri.compare(0, 5, "data:") == 0) {
+				return std::nullopt;
+			}
+
+			return TextUtil::PathFromUtf8(TextUtil::PercentDecode(uri));
+		}
+
+		/// Zkopíruje barvu RGBA do pole
+		void CopyColor(const gltf::Color4 &color, float (&out)[4])
+		{
+			out[0] = color.r;
+			out[1] = color.g;
+			out[2] = color.b;
+			out[3] = color.a;
+		}
+
+		/// Zkopíruje barvu RGB do pole
+		void CopyColor(const gltf::Color3 &color, float (&out)[3])
+		{
+			out[0] = color.r;
+			out[1] = color.g;
+			out[2] = color.b;
+		}
 
 		/// Přípona souboru podle obsahu (podpis souboru), jinak podle typu MIME nebo přípony v URI
 		std::string DetectExtension(const std::vector<uint8_t> &data, const std::string &mime, const std::string &uri)
@@ -303,8 +335,8 @@ namespace Gltf {
 				return ".ktx2";
 			}
 
-			if (!uri.empty() && uri.compare(0, 5, "data:") != 0) {
-				return TextUtil::ToLowerAscii(TextUtil::PathToUtf8(TextUtil::PathFromUtf8(TextUtil::PercentDecode(uri)).extension()));
+			if (const auto path = ExternalUriPath(uri)) {
+				return TextUtil::ToLowerAscii(TextUtil::PathToUtf8(path->extension()));
 			}
 
 			return std::string();
@@ -326,21 +358,23 @@ namespace Gltf {
 			const gltf::Image &src = this->doc.images.Get(docIndex);
 			Image image;
 
+			// Nepoužitelný obrázek: varování a záznam do cache, aby se hlásil jen jednou
+			const auto fail = [&](const std::string &problem) {
+				Log::Warn("Image '" + (src.name.empty() ? imageId : src.name) + "' " + problem + " - materials using it are exported without the texture.");
+				this->imageIndex[docIndex] = -1;
+
+				return -1;
+			};
+
 			try {
 				image.data = this->reader.ReadBinaryData(this->doc, src);
 			}
 			catch (const std::exception &ex) {
-				Log::Warn("Image '" + (src.name.empty() ? imageId : src.name) + "' cannot be read (" + ex.what() + ") - materials using it are exported without the texture.");
-				this->imageIndex[docIndex] = -1;
-
-				return -1;
+				return fail(std::string("cannot be read (") + ex.what() + ")");
 			}
 
 			if (image.data.empty()) {
-				Log::Warn("Image '" + (src.name.empty() ? imageId : src.name) + "' is empty - materials using it are exported without the texture.");
-				this->imageIndex[docIndex] = -1;
-
-				return -1;
+				return fail("is empty");
 			}
 
 			image.extension = DetectExtension(image.data, src.mimeType, src.uri);
@@ -348,8 +382,8 @@ namespace Gltf {
 			if (!src.name.empty()) {
 				image.name = src.name;
 			}
-			else if (!src.uri.empty() && src.uri.compare(0, 5, "data:") != 0) {
-				image.name = TextUtil::PathToUtf8(TextUtil::PathFromUtf8(TextUtil::PercentDecode(src.uri)).stem());
+			else if (const auto path = ExternalUriPath(src.uri)) {
+				image.name = TextUtil::PathToUtf8(path->stem());
 			}
 
 			this->scene.images.push_back(std::move(image));
@@ -402,15 +436,10 @@ namespace Gltf {
 				m.name = src.name;
 
 				const auto &pbr = src.metallicRoughness;
-				m.baseColor[0] = pbr.baseColorFactor.r;
-				m.baseColor[1] = pbr.baseColorFactor.g;
-				m.baseColor[2] = pbr.baseColorFactor.b;
-				m.baseColor[3] = pbr.baseColorFactor.a;
+				CopyColor(pbr.baseColorFactor, m.baseColor);
 				m.metallic = pbr.metallicFactor;
 				m.roughness = pbr.roughnessFactor;
-				m.emissive[0] = src.emissiveFactor.r;
-				m.emissive[1] = src.emissiveFactor.g;
-				m.emissive[2] = src.emissiveFactor.b;
+				CopyColor(src.emissiveFactor, m.emissive);
 				m.alphaMode = src.alphaMode == gltf::ALPHA_BLEND ? AlphaMode::Blend : (src.alphaMode == gltf::ALPHA_MASK ? AlphaMode::Mask : AlphaMode::Opaque);
 				m.alphaCutoff = src.alphaCutoff;
 				m.doubleSided = src.doubleSided;
@@ -443,13 +472,8 @@ namespace Gltf {
 				if (src.HasExtension<gltf::KHR::Materials::PBRSpecularGlossiness>()) {
 					const auto &sg = src.GetExtension<gltf::KHR::Materials::PBRSpecularGlossiness>();
 					m.specularGlossiness = true;
-					m.baseColor[0] = sg.diffuseFactor.r;
-					m.baseColor[1] = sg.diffuseFactor.g;
-					m.baseColor[2] = sg.diffuseFactor.b;
-					m.baseColor[3] = sg.diffuseFactor.a;
-					m.specular[0] = sg.specularFactor.r;
-					m.specular[1] = sg.specularFactor.g;
-					m.specular[2] = sg.specularFactor.b;
+					CopyColor(sg.diffuseFactor, m.baseColor);
+					CopyColor(sg.specularFactor, m.specular);
 					m.glossiness = sg.glossinessFactor;
 					m.baseColorTexture = this->MakeTextureRef(sg.diffuseTexture, m.name, "diffuse");
 					m.specularGlossinessTexture = this->MakeTextureRef(sg.specularGlossinessTexture, m.name, "specular-glossiness");
