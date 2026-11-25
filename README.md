@@ -37,7 +37,7 @@ Co řešení obsahuje:
 
 | Projekt     | Typ                                    | Poznámka                                                                                                                                        |
 | ----------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GlbToMesh` | konzolová aplikace (výchozí spouštěný) | `main.cpp`, `CommandLine.*`, `core\`, `formats\`; vstupní bod `wmain` (argumenty a názvy souborů v UTF-16 → UTF-8, takže fungují i české názvy) |
+| `GlbToMesh` | konzolová aplikace (výchozí spouštěný) | `main.cpp`, `AppInfo.*`, `CommandLine.*`, `core\`, `formats\`, `Resource.rc`; vstupní bod `wmain` (argumenty a názvy souborů v UTF-16 → UTF-8, takže fungují i české názvy) |
 | `glTF-SDK`  | statická knihovna                      | `GlbToMesh\glTF-SDK\Src\*.cpp` (Microsoft glTF-SDK, beze změn); RapidJSON je ve složce `RapidJson`                                              |
 
 Nastavení projektu `GlbToMesh`: `PlatformToolset v145`, `/std:c++20`, režim shody (`/permissive-`), úroveň varování `/W3`. Hlavičky
@@ -55,6 +55,17 @@ Z příkazového řádku (*Developer Command Prompt*): `msbuild GlbToMesh.slnx /
 ```
 GlbToMesh <model.glb|model.gltf> [výstup] [přepínače]
 ```
+
+Po spuštění program nejdřív vypíše **hlavičku** s názvem, verzí a autorem. Údaje čte za běhu z prostředku `VERSIONINFO` v exe
+(`ProductName`, `ProductVersion`, `CompanyName` v `GlbToMesh\Resource.rc`), takže po změně verze v `Resource.rc` a novém sestavení
+se změní i hlavička:
+
+```
+GlbToMesh 1.0.0.0
+Author: Lubomír Tomandl - Angry Developer Studio
+```
+
+**Spuštění bez argumentů** (samotné `GlbToMesh.exe`) vypíše nápovědu, stejně jako `--help`, a skončí s kódem 0.
 
 Výstupní formát se určí **podle přípony výstupního souboru** (`.cmo`, `.sdkmesh`); přepínač `--format` volbu vynutí. Není-li výstupní
 soubor zadán, vezme se název vstupu s příponou formátu, a to jen s `--format` (jinak program neví, kam zapisovat). Vstup se pozná podle
@@ -74,7 +85,7 @@ Společné přepínače:
 | `--right-handed`          | zapsat model pravotočivě jako glTF → nezrcadlit. Bez obou přepínačů rozhodne formát (u CMO i SDKMESH je výchozí pravotočivá soustava). Vinutí trojúhelníků se vždy zapíše tak, jak ho formát čeká |
 | `--srgb-colors`           | barvy materiálů zapsat jako sRGB (glTF je má lineární; pro načítání s `ModelLoader_MaterialColorsSRGB`)                                                                                           |
 | `-v, --verbose`           | podrobný výpis                                                                                                                                                                                    |
-| `-h, --help`              | nápověda (včetně přepínačů a poznámek jednotlivých formátů)                                                                                                                                       |
+| `-h, --help`              | nápověda (včetně přepínačů a poznámek jednotlivých formátů); vypíše se i při spuštění bez argumentů                                                                                              |
 
 Přepínače formátu CMO:
 
@@ -93,7 +104,8 @@ Přepínače formátu SDKMESH:
 Přepínač formátu, který nebyl vybrán, je **chybou použití** (kód 2) a hláška říká, kterému formátu patří. Hodnoty přepínačů formátu
 se kontrolují ještě před čtením vstupu.
 
-Návratový kód: `0` OK, `1` chyba při čtení nebo převodu, `2` chybné použití (neplatné přepínače).
+Návratový kód: `0` OK (také nápověda a spuštění bez argumentů), `1` chyba při čtení nebo převodu, `2` chybné použití (neplatné
+přepínače).
 
 ```
 GlbToMesh hero.glb hero.cmo                                 # hero.cmo + textury vedle něj
@@ -109,7 +121,8 @@ DXUT), víc animací `model_<název animace>.sdkmesh_anim`.
 ### Ukázky převodu
 
 Příklady jsou ze skutečných modelů. `GlbToMesh.exe` se spouští ve složce se vstupním souborem a výstup vzniká vedle něj. Názvy souborů
-s mezerou patří do uvozovek. Výpisy jsou zkrácené (vynechané řádky jsou označeny `…`).
+s mezerou patří do uvozovek. Výpisy jsou zkrácené (vynechané řádky jsou označeny `…`) a neobsahují hlavičku programu, kterou
+začíná každý výpis.
 
 **Postava s kostrou a animacemi → CMO.** `hero.glb` má 69 uzlů, 24 meshů, 20 materiálů s texturami, jeden skin a 21 animací:
 
@@ -409,7 +422,10 @@ Důležité je rozdělení odpovědností:
   tak nikdy nezanechá napůl zapsané soubory.
 - **Registr formátů** (`core\FormatRegistry.cpp`) formáty vyhledává podle názvu a přípony, hlídá kolize názvů, přípon a přepínačů
   a poskytuje je příkazové řádce a nápovědě. Příkazová řádka (`CommandLine.cpp`) o konkrétních formátech nic neví: nápovědu,
-  kontrolu přepínačů formátu i vlastnictví přepínačů čte z toho, co formát o sobě sdělí.
+  kontrolu přepínačů formátu i vlastnictví přepínačů čte z toho, co formát o sobě sdělí. Společné přepínače programu jsou v jediné
+  tabulce, ze které vychází čtení argumentů, nápověda i seznam názvů, které formát nesmí použít.
+- **Společné pomocné kódy** v `core\` sdílejí oba formáty: `ExportUtil` (materiál Blinn-Phong, transformace UV, obálka, společné
+  volby a varování), `ByteWriter.h` (sestavení binárního souboru v paměti), `TextUtil` (UTF-8, jedinečné názvy, `Join`) a `MathUtil`.
 
 Struktura zdrojových kódů:
 
@@ -421,15 +437,18 @@ clean.bat                      smaže .vs a všechny složky x64
 data/                          ukázkové modely, textury a výstupy (do sestavení nepatří)
 GlbToMesh/
   GlbToMesh.vcxproj(.filters)  projekt aplikace
-  main.cpp                     vstupní bod: registrace formátů, přepínače, načtení, export, zápis
-  CommandLine.h/.cpp           přepínače, nápověda, volba formátu, kontrola přepínačů formátů
+  main.cpp                     vstupní bod: hlavička, registrace formátů, přepínače, načtení, export, zápis
+  AppInfo.h/.cpp               název, verze a autor z prostředku VERSIONINFO, hlavička programu
+  CommandLine.h/.cpp           tabulka společných přepínačů, nápověda, volba formátu, kontrola přepínačů formátů
+  Resource.rc, Resource.h      prostředky exe: VERSIONINFO (název, verze, autor) a ikona
   core/
     OutputFormat.h             rozhraní formátu, přepínače formátu, výsledek exportu, registr
     FormatRegistry.cpp         registr formátů
     OutputWriter.h/.cpp        jediný zápis souborů na disk
     GltfLoader.h/.cpp          načtení glTF/GLB (Microsoft glTF-SDK) do Gltf::Scene
     GltfScene.h                neutrální model scény
-    ExportUtil.h/.cpp          společný základ převodníků (SceneConverter)
+    ExportUtil.h/.cpp          společný základ převodníků (SceneConverter, ConvertOptions, materiály, UV, obálka)
+    ByteWriter.h               paměťový buffer pro zápis binárních souborů (CMO, SDKMESH)
     FileUtil, TextUtil, MathUtil, Log
   formats/
     FormatList.cpp             SEZNAM FORMÁTŮ (jediné místo, které se při přidání formátu upravuje)
@@ -659,9 +678,9 @@ namespace Obj {
         class ObjConverter : public ExportUtil::SceneConverter {
           public:
             /// @param scene Načtená scéna (musí přežít převodník)
-            /// @param leftHanded Zrcadlit osu Z (levotočivý výstup)
+            /// @param options Společné volby převodu (soustava souřadnic, název modelu)
             /// @param precision Počet desetinných míst souřadnic
-            ObjConverter(const Gltf::Scene &scene, bool leftHanded, int precision) : SceneConverter(scene, leftHanded, true, "model"), precision(precision)
+            ObjConverter(const Gltf::Scene &scene, const ExportUtil::ConvertOptions &options, int precision) : SceneConverter(scene, options), precision(precision)
             {
             }
 
@@ -764,7 +783,11 @@ namespace Obj {
             /// Převede scénu na text OBJ; zápis souboru provede jádro programu
             Formats::ExportResult Export(const Formats::ExportContext &context) const override
             {
-                ObjConverter converter(context.scene, context.common.handedness == Formats::Handedness::Left, ParsePrecision(context.options));
+                ExportUtil::ConvertOptions options;
+                options.SetCommon(context, false); // bez --left-handed / --right-handed je OBJ pravotočivý jako glTF
+                options.noTextures = true;         // OBJ textury nezapisuje
+
+                ObjConverter converter(context.scene, options, ParsePrecision(context.options));
                 const std::string text = converter.Run();
 
                 Formats::ExportResult result;
@@ -791,8 +814,12 @@ namespace Obj {
 | `Formats::CommonOptions`     | `handedness` (`Auto` / `Left` / `Right`; `Auto` znamená „jak je zvykem formátu“), `srgbColors`, `noAnimations`, `noTextures`                                                                                                                                                                                     |
 | `Formats::OptionSet`         | hodnoty přepínačů formátu: `Has`, `Last`, `All`                                                                                                                                                                                                                                                                  |
 | `Formats::ExportResult`      | `model` (hlavní soubor, jeho cestu zadal uživatel), `modelNote` a `summary` (pro závěrečný výpis), `textures` (zapíšou se do adresáře textur), `companions` (zapíšou se vedle modelu, např. animace)                                                                                                             |
-| `ExportUtil::SceneConverter` | základ převodníku: `ComputeWorld` a `world[]` (světové matice uzlů), `Mirror`, `SampleChannel` / `SampleNode` (animace), `Prepare` (doplnění normál, tangent a barev), `TextureFile` (vytažení textury z glTF s bezpečným jedinečným názvem), `CheckTextureFileName` (omezení názvů souborů formátu), `WarnOnce` |
-| `MathUtil`                   | matice `Mat4`, `Vec3`, `Quat`, `TransformPoint`, `Determinant3`, …                                                                                                                                                                                                                                               |
+| `ExportUtil::ConvertOptions` | společné volby převodu (`leftHanded`, `srgbColors`, `noAnimations`, `noTextures`, `modelName`); `SetCommon(context, autoLeftHanded)` je vyplní z kontextu exportu, druhý parametr určuje výchozí soustavu formátu. Vlastní volby formátu se přidají odvozenou strukturou |
+| `ExportUtil::SceneConverter` | základ převodníku: `ComputeWorld` a `world[]` (světové matice uzlů), `Mirror`, `SampleChannel` / `SampleNode` / `AnimatedNodes` (animace), `Prepare` (doplnění normál, tangent a barev), `SourceMaterial`, `TextureFile` (vytažení textury z glTF s bezpečným jedinečným názvem), `CheckTextureFileName` (omezení názvů souborů formátu), `MaterialAlpha`, `PickUvTransform`, `WarnOnce` a společná varování (`WarnGeometryLimits`, `WarnUnsupportedPbrTextures`, `WarnTexCoordSet`) |
+| `ExportUtil` (volné funkce)  | `MakePhongMaterial` (materiál Blinn-Phong z PBR), `MakeUvTransform` / `SameUvTransform`, `Bounds` (obálka), `Vec3At`, `PackColor`, `IsUsable` (primitivum s trojúhelníky), `ClipName` |
+| `ExportUtil::ByteWriter`     | sestavení binárního souboru v paměti (`core\ByteWriter.h`): `Append`, `Records`, `Raw`, `PadTo`, `Size`, `Take` |
+| `MathUtil`                   | matice `Mat4`, `Vec3`, `Quat`, `TransformPoint`, `Determinant3`, `MirrorZ`, `ToFloats`, …                                                                                                                                                                                                                         |
+| `TextUtil`                   | `UniqueName` (jedinečný název s příponou `_2`, `_3`…), `TruncateUtf8`, `Join`, převody UTF-8 / UTF-16 a cest                                                                                                                                                                                                       |
 | `Log::Warn`, `Log::Detail`   | varování (výstup vznikne, ale nemusí být přesný), podrobnosti pro `--verbose`                                                                                                                                                                                                                                    |
 
 Pravidla pro exportér:

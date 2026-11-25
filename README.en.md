@@ -39,7 +39,7 @@ What the solution contains:
 
 | Project     | Type                                  | Notes                                                                                                                                                        |
 | ----------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `GlbToMesh` | console application (startup project) | `main.cpp`, `CommandLine.*`, `core\`, `formats\`; entry point `wmain` (arguments and file names are converted from UTF-16 to UTF-8, so non-ASCII names work) |
+| `GlbToMesh` | console application (startup project) | `main.cpp`, `AppInfo.*`, `CommandLine.*`, `core\`, `formats\`, `Resource.rc`; entry point `wmain` (arguments and file names are converted from UTF-16 to UTF-8, so non-ASCII names work) |
 | `glTF-SDK`  | static library                        | `GlbToMesh\glTF-SDK\Src\*.cpp` (Microsoft glTF-SDK, unmodified); RapidJSON is in `RapidJson`                                                                 |
 
 Settings of the `GlbToMesh` project: `PlatformToolset v145`, `/std:c++20`, conformance mode (`/permissive-`), warning level `/W3`.
@@ -57,6 +57,17 @@ From the command line (*Developer Command Prompt*): `msbuild GlbToMesh.slnx /p:C
 ```
 GlbToMesh <model.glb|model.gltf> [output] [options]
 ```
+
+On start the program first prints a **banner** with its name, version and author. It reads them at run time from the `VERSIONINFO`
+resource of the exe (`ProductName`, `ProductVersion`, `CompanyName` in `GlbToMesh\Resource.rc`), so changing the version in
+`Resource.rc` and rebuilding changes the banner too:
+
+```
+GlbToMesh 1.0.0.0
+Author: Lubomír Tomandl - Angry Developer Studio
+```
+
+**Running without arguments** (just `GlbToMesh.exe`) prints the help, the same as `--help`, and exits with code 0.
 
 The output format is chosen by the **extension of the output file** (`.cmo`, `.sdkmesh`); `--format` forces it. If no output file is
 given, the input name with the format's extension is used, and that works only with `--format` (otherwise the program does not know
@@ -76,7 +87,7 @@ Common options:
 | `--right-handed`      | write the model right-handed like glTF → do not mirror. Without either option the format decides (both CMO and SDKMESH default to right-handed). The triangle winding is always written the way the format expects |
 | `--srgb-colors`       | write material colors as sRGB (glTF has them linear; for loading with `ModelLoader_MaterialColorsSRGB`)                                                                                                            |
 | `-v, --verbose`       | print details                                                                                                                                                                                                      |
-| `-h, --help`          | help (including the options and notes of each format)                                                                                                                                                              |
+| `-h, --help`          | help (including the options and notes of each format); also printed when the program is run without arguments                                                                                                    |
 
 Options of the CMO format:
 
@@ -95,7 +106,8 @@ Options of the SDKMESH format:
 An option of a format that was not selected is a **usage error** (code 2), and the message names the format it belongs to. The values
 of format options are checked before the input is read.
 
-Exit codes: `0` OK, `1` error while reading or converting, `2` usage error (invalid options).
+Exit codes: `0` OK (also the help and running without arguments), `1` error while reading or converting, `2` usage error (invalid
+options).
 
 ```
 GlbToMesh hero.glb hero.cmo                                 # hero.cmo + textures next to it
@@ -111,7 +123,8 @@ expects), several animations `model_<animation name>.sdkmesh_anim`.
 ### Conversion examples
 
 The examples use real models. `GlbToMesh.exe` is run in the folder of the input file and the output is written next to it. File names
-containing a space have to be quoted. The listings are shortened (omitted lines are marked `…`).
+containing a space have to be quoted. The listings are shortened (omitted lines are marked `…`) and leave out the program banner
+that every listing starts with.
 
 **A character with a skeleton and animations → CMO.** `hero.glb` has 69 nodes, 24 meshes, 20 materials with textures, one skin
 and 21 animations:
@@ -418,7 +431,10 @@ The split of responsibilities is the important part:
 - **The format registry** (`core\FormatRegistry.cpp`) finds formats by name and extension, guards against clashes of names,
   extensions and options, and provides them to the command line and the help. The command line (`CommandLine.cpp`) knows nothing about
   specific formats: it takes the help text, the checking of format options and the ownership of options from what each format reports
-  about itself.
+  about itself. The common options of the program are in a single table that drives argument parsing, the help and the list of names
+  a format must not use.
+- **Shared helpers** in `core\` are used by both formats: `ExportUtil` (Blinn-Phong material, UV transform, bounds, common options
+  and warnings), `ByteWriter.h` (building a binary file in memory), `TextUtil` (UTF-8, unique names, `Join`) and `MathUtil`.
 
 Source layout:
 
@@ -430,15 +446,18 @@ clean.bat                      deletes .vs and every x64 folder
 data/                          sample models, textures and outputs (not part of the build)
 GlbToMesh/
   GlbToMesh.vcxproj(.filters)  application project
-  main.cpp                     entry point: registering formats, options, loading, export, writing
-  CommandLine.h/.cpp           options, help, format choice, checking format options
+  main.cpp                     entry point: banner, registering formats, options, loading, export, writing
+  AppInfo.h/.cpp               name, version and author from the VERSIONINFO resource, program banner
+  CommandLine.h/.cpp           table of common options, help, format choice, checking format options
+  Resource.rc, Resource.h      exe resources: VERSIONINFO (name, version, author) and icon
   core/
     OutputFormat.h             format interface, format options, export result, registry
     FormatRegistry.cpp         format registry
     OutputWriter.h/.cpp        the only writer of files
     GltfLoader.h/.cpp          loading glTF/GLB (Microsoft glTF-SDK) into Gltf::Scene
     GltfScene.h                neutral scene model
-    ExportUtil.h/.cpp          shared base of the converters (SceneConverter)
+    ExportUtil.h/.cpp          shared base of the converters (SceneConverter, ConvertOptions, materials, UV, bounds)
+    ByteWriter.h               in-memory buffer for writing binary files (CMO, SDKMESH)
     FileUtil, TextUtil, MathUtil, Log
   formats/
     FormatList.cpp             THE FORMAT LIST (the only place edited when adding a format)
@@ -673,9 +692,9 @@ namespace Obj {
         class ObjConverter : public ExportUtil::SceneConverter {
           public:
             /// @param scene The loaded scene (must outlive the converter)
-            /// @param leftHanded Mirror the Z axis (left-handed output)
+            /// @param options Common conversion options (coordinate system, model name)
             /// @param precision Number of decimal places of the coordinates
-            ObjConverter(const Gltf::Scene &scene, bool leftHanded, int precision) : SceneConverter(scene, leftHanded, true, "model"), precision(precision)
+            ObjConverter(const Gltf::Scene &scene, const ExportUtil::ConvertOptions &options, int precision) : SceneConverter(scene, options), precision(precision)
             {
             }
 
@@ -778,7 +797,11 @@ namespace Obj {
             /// Converts the scene to OBJ text; the file is written by the core of the program
             Formats::ExportResult Export(const Formats::ExportContext &context) const override
             {
-                ObjConverter converter(context.scene, context.common.handedness == Formats::Handedness::Left, ParsePrecision(context.options));
+                ExportUtil::ConvertOptions options;
+                options.SetCommon(context, false); // without --left-handed / --right-handed OBJ is right-handed like glTF
+                options.noTextures = true;         // OBJ writes no textures
+
+                ObjConverter converter(context.scene, options, ParsePrecision(context.options));
                 const std::string text = converter.Run();
 
                 Formats::ExportResult result;
@@ -806,8 +829,12 @@ anything on disk.
 | `Formats::CommonOptions`     | `handedness` (`Auto` / `Left` / `Right`; `Auto` means "as is customary for the format"), `srgbColors`, `noAnimations`, `noTextures`                                                                                                                                                                                              |
 | `Formats::OptionSet`         | values of the format's options: `Has`, `Last`, `All`                                                                                                                                                                                                                                                                             |
 | `Formats::ExportResult`      | `model` (the main file, whose path the user gave), `modelNote` and `summary` (for the final message), `textures` (written to the texture directory), `companions` (written next to the model, e.g. animations)                                                                                                                   |
-| `ExportUtil::SceneConverter` | base of a converter: `ComputeWorld` and `world[]` (node world matrices), `Mirror`, `SampleChannel` / `SampleNode` (animations), `Prepare` (filling in normals, tangents and colors), `TextureFile` (extracting a texture from glTF with a safe unique name), `CheckTextureFileName` (file-name limits of the format), `WarnOnce` |
-| `MathUtil`                   | `Mat4`, `Vec3`, `Quat`, `TransformPoint`, `Determinant3`, …                                                                                                                                                                                                                                                                      |
+| `ExportUtil::ConvertOptions` | common conversion options (`leftHanded`, `srgbColors`, `noAnimations`, `noTextures`, `modelName`); `SetCommon(context, autoLeftHanded)` fills them from the export context, the second parameter is the default coordinate system of the format. A format adds its own options in a derived struct |
+| `ExportUtil::SceneConverter` | base of a converter: `ComputeWorld` and `world[]` (node world matrices), `Mirror`, `SampleChannel` / `SampleNode` / `AnimatedNodes` (animations), `Prepare` (filling in normals, tangents and colors), `SourceMaterial`, `TextureFile` (extracting a texture from glTF with a safe unique name), `CheckTextureFileName` (file-name limits of the format), `MaterialAlpha`, `PickUvTransform`, `WarnOnce` and the shared warnings (`WarnGeometryLimits`, `WarnUnsupportedPbrTextures`, `WarnTexCoordSet`) |
+| `ExportUtil` (free functions) | `MakePhongMaterial` (Blinn-Phong material from PBR), `MakeUvTransform` / `SameUvTransform`, `Bounds` (bounding box), `Vec3At`, `PackColor`, `IsUsable` (primitive with triangles), `ClipName` |
+| `ExportUtil::ByteWriter`     | building a binary file in memory (`core\ByteWriter.h`): `Append`, `Records`, `Raw`, `PadTo`, `Size`, `Take` |
+| `MathUtil`                   | `Mat4`, `Vec3`, `Quat`, `TransformPoint`, `Determinant3`, `MirrorZ`, `ToFloats`, …                                                                                                                                                                                                                                                |
+| `TextUtil`                   | `UniqueName` (unique name with a `_2`, `_3`… suffix), `TruncateUtf8`, `Join`, UTF-8 / UTF-16 and path conversions                                                                                                                                                                                                                    |
 | `Log::Warn`, `Log::Detail`   | warnings (the output is produced but may not be exact), details for `--verbose`                                                                                                                                                                                                                                                  |
 
 Rules for an exporter:
