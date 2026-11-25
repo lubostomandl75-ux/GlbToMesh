@@ -55,23 +55,18 @@ namespace Formats {
 				throw std::logic_error("An option of the format '" + format->Name() + "' has no name");
 			}
 
-			std::vector<std::string> names = spec.aliases;
-			names.push_back(spec.name);
+			// Už zaregistrovaný přepínač se stejným názvem nebo zkratkou musí být tentýž přepínač
+			const auto clashes = [&spec](const OptionSpec *other) { return other != nullptr && (other->TakesValue() != spec.TakesValue() || other->name != spec.name); };
 
-			for (const std::string &optionName : names) {
-				const OptionSpec *other = this->FindLong(optionName);
+			for (const std::string &optionName : spec.AllNames()) {
 
-				if (other != nullptr && (other->TakesValue() != spec.TakesValue() || other->name != spec.name)) {
+				if (clashes(this->FindLong(optionName))) {
 					throw std::logic_error("The option --" + optionName + " of the format '" + format->Name() + "' clashes with an option of another format");
 				}
 			}
 
-			if (spec.shortName != '\0') {
-				const OptionSpec *other = this->FindShort(spec.shortName);
-
-				if (other != nullptr && (other->TakesValue() != spec.TakesValue() || other->name != spec.name)) {
-					throw std::logic_error(std::string("The option -") + spec.shortName + " of the format '" + format->Name() + "' clashes with an option of another format");
-				}
+			if (spec.shortName != '\0' && clashes(this->FindShort(spec.shortName))) {
+				throw std::logic_error(std::string("The option -") + spec.shortName + " of the format '" + format->Name() + "' clashes with an option of another format");
 			}
 		}
 
@@ -106,17 +101,7 @@ namespace Formats {
 			wanted.insert(wanted.begin(), '.');
 		}
 
-		for (const auto &format : this->formats) {
-
-			for (const std::string &extension : format->Extensions()) {
-
-				if (TextUtil::ToLowerAscii(extension) == wanted) {
-					return format.get();
-				}
-			}
-		}
-
-		return nullptr;
+		return this->FindByExtension(wanted);
 	}
 
 	const OutputFormat *FormatRegistry::FindByExtension(const std::string &extension) const
@@ -148,7 +133,7 @@ namespace Formats {
 
 			for (const OptionSpec &spec : format->Options()) {
 
-				if (spec.name == name || std::find(spec.aliases.begin(), spec.aliases.end(), name) != spec.aliases.end()) {
+				if (spec.MatchesLong(name)) {
 					owners.push_back(format.get());
 
 					break;
@@ -167,7 +152,7 @@ namespace Formats {
 
 			for (const OptionSpec &spec : format->Options()) {
 
-				if (spec.shortName != '\0' && spec.shortName == shortName) {
+				if (spec.MatchesShort(shortName)) {
 					owners.push_back(format.get());
 
 					break;
@@ -182,7 +167,7 @@ namespace Formats {
 	{
 		for (const OptionSpec &spec : this->optionCache) {
 
-			if (spec.name == name || std::find(spec.aliases.begin(), spec.aliases.end(), name) != spec.aliases.end()) {
+			if (spec.MatchesLong(name)) {
 				return &spec;
 			}
 		}
@@ -194,7 +179,7 @@ namespace Formats {
 	{
 		for (const OptionSpec &spec : this->optionCache) {
 
-			if (spec.shortName != '\0' && spec.shortName == shortName) {
+			if (spec.MatchesShort(shortName)) {
 				return &spec;
 			}
 		}

@@ -697,11 +697,8 @@ namespace Gltf {
 					node.local = MathUtil::Compose(node.translation, node.rotation, node.scale);
 				}
 
-				for (const double v : node.local) {
-
-					if (!std::isfinite(v)) {
-						throw std::runtime_error("Node " + std::to_string(i) + " has a transformation that is not finite");
-					}
+				if (!MathUtil::IsFinite(node.local)) {
+					throw std::runtime_error("Node " + std::to_string(i) + " has a transformation that is not finite");
 				}
 
 				if (!src.meshId.empty()) {

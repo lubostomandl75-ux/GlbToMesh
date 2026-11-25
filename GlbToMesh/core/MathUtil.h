@@ -39,6 +39,64 @@ namespace MathUtil {
 		return {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
 	}
 
+	/// Všechny prvky matice jsou konečná čísla (ne NaN ani nekonečno)
+	inline bool IsFinite(const Mat4 &m)
+	{
+		for (const double v : m) {
+
+			if (!std::isfinite(v)) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/// Zkopíruje matici (16 čísel double) do pole 16 floatů
+	inline void ToFloats(const Mat4 &m, float *out)
+	{
+		for (size_t i = 0; i < 16; ++i) {
+			out[i] = static_cast<float>(m[i]);
+		}
+	}
+
+	/// Zkopíruje vektor (3 čísla double) do pole 3 floatů
+	inline void ToFloats(const Vec3 &v, float *out)
+	{
+		out[0] = static_cast<float>(v.x);
+		out[1] = static_cast<float>(v.y);
+		out[2] = static_cast<float>(v.z);
+	}
+
+	/// Determinant levého horního bloku 3x3
+	inline double Determinant3(const Mat4 &m)
+	{
+		return m[0] * (m[5] * m[10] - m[9] * m[6]) - m[4] * (m[1] * m[10] - m[9] * m[2]) + m[8] * (m[1] * m[6] - m[5] * m[2]);
+	}
+
+	/// Skalární součin kvaternionů (kosinus úhlu mezi jednotkovými kvaterniony)
+	inline double Dot(const Quat &a, const Quat &b)
+	{
+		return a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
+	}
+
+	/// Jednotkový kvaternion z posloupnosti x, y, z, w; nulový kvaternion nahradí jednotkovým
+	inline Quat NormalizeQuat(Quat q)
+	{
+		const double len = std::sqrt(Dot(q, q));
+
+		if (!(len > 0.0) || !std::isfinite(len)) {
+			return Quat {};
+		}
+
+		q.x /= len;
+		q.y /= len;
+		q.z /= len;
+		q.w /= len;
+
+		return q;
+	}
+
 	/// Součin a * b (sloupcové vektory: nejdřív se použije b, potom a)
 	inline Mat4 Multiply(const Mat4 &a, const Mat4 &b)
 	{
@@ -124,6 +182,14 @@ namespace MathUtil {
 		return m;
 	}
 
+	/// Bod nebo vektor zrcadlený podél osy Z (z -> -z)
+	inline Vec3 MirrorZ(Vec3 v)
+	{
+		v.z = -v.z;
+
+		return v;
+	}
+
 	/// Kvaternion z rotační matice 3x3 (levý horní roh matice po sloupcích, sloupce musí být ortonormální)
 	inline Quat QuaternionFromRotation(const double r00, const double r01, const double r02, const double r10,
 									   const double r11, const double r12, const double r20, const double r21,
@@ -161,16 +227,7 @@ namespace MathUtil {
 			q.z = 0.25 * s;
 		}
 
-		const double len = std::sqrt(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
-
-		if (len > 0.0) {
-			q.x /= len;
-			q.y /= len;
-			q.z /= len;
-			q.w /= len;
-		}
-
-		return q;
+		return NormalizeQuat(q);
 	}
 
 	/// Matice 4x4 složená z posunu, rotace a měřítka (M = T * R * S)
@@ -216,11 +273,7 @@ namespace MathUtil {
 		s.y = std::sqrt(m[4] * m[4] + m[5] * m[5] + m[6] * m[6]);
 		s.z = std::sqrt(m[8] * m[8] + m[9] * m[9] + m[10] * m[10]);
 
-		// Determinant levého horního bloku 3x3
-		const double det = m[0] * (m[5] * m[10] - m[9] * m[6]) - m[4] * (m[1] * m[10] - m[9] * m[2]) +
-						   m[8] * (m[1] * m[6] - m[5] * m[2]);
-
-		if (det < 0.0) {
+		if (Determinant3(m) < 0.0) {
 			s.x = -s.x;
 		}
 
@@ -303,12 +356,6 @@ namespace MathUtil {
 		return {m[0] * v.x + m[4] * v.y + m[8] * v.z, m[1] * v.x + m[5] * v.y + m[9] * v.z, m[2] * v.x + m[6] * v.y + m[10] * v.z};
 	}
 
-	/// Determinant levého horního bloku 3x3
-	inline double Determinant3(const Mat4 &m)
-	{
-		return m[0] * (m[5] * m[10] - m[9] * m[6]) - m[4] * (m[1] * m[10] - m[9] * m[2]) + m[8] * (m[1] * m[6] - m[5] * m[2]);
-	}
-
 	/**
 	 * Matice pro transformaci normál: inverzní transponovaná matice 3x3 (v levém horním bloku, zbytek jednotkový). Pro matici
 	 * s degenerovaným blokem 3x3 vrací jednotkovou matici.
@@ -338,27 +385,10 @@ namespace MathUtil {
 		return r;
 	}
 
-	/// Jednotkový kvaternion z posloupnosti x, y, z, w; nulový kvaternion nahradí jednotkovým
-	inline Quat NormalizeQuat(Quat q)
-	{
-		const double len = std::sqrt(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
-
-		if (!(len > 0.0) || !std::isfinite(len)) {
-			return Quat {};
-		}
-
-		q.x /= len;
-		q.y /= len;
-		q.z /= len;
-		q.w /= len;
-
-		return q;
-	}
-
 	/// Sférická interpolace kvaternionů (kratší cestou)
 	inline Quat Slerp(const Quat &a, Quat b, double t)
 	{
-		double cosine = a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
+		double cosine = Dot(a, b);
 
 		if (cosine < 0.0) {
 			cosine = -cosine;

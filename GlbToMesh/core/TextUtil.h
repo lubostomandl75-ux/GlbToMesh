@@ -16,6 +16,7 @@
 // Hlavičkové soubory C++
 #include <cstddef>
 #include <filesystem>
+#include <set>
 #include <string>
 
 namespace TextUtil {
@@ -71,4 +72,21 @@ namespace TextUtil {
 	 * @return std::string Název souboru v UTF-8
 	 */
 	std::string SanitizeFileName(const std::string &text, const std::string &fallback);
+
+	/// Zkrátí UTF-8 text na nejvýš maxBytes bajtů, aniž by přerušil znak
+	std::string TruncateUtf8(const std::string &text, size_t maxBytes);
+
+	/**
+	 * Vytvoří název, který ještě není v množině použitých, a přidá ho do ní. Obsazený název dostane před příponou
+	 * pořadové číslo: "stem.ext", "stem_2.ext", "stem_3.ext", ...
+	 *
+	 * @param std::set<std::string>& used Použité názvy (při ignoreCase uložené malými písmeny)
+	 * @param const std::string& stem Požadovaný název bez přípony (UTF-8)
+	 * @param const std::string& extension Přípona připojená za název a pořadové číslo (např. ".png"); může být prázdná
+	 * @param size_t maxBytes Nejvyšší délka názvu bez přípony v bajtech, včetně pořadového čísla (npos = bez omezení)
+	 * @param bool ignoreCase Porovnávat bez ohledu na velikost ASCII písmen
+	 *
+	 * @return std::string Jedinečný název včetně přípony
+	 */
+	std::string UniqueName(std::set<std::string> &used, const std::string &stem, const std::string &extension = std::string(), size_t maxBytes = std::string::npos, bool ignoreCase = true);
 }

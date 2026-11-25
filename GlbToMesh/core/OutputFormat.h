@@ -17,6 +17,7 @@
 #pragma once
 
 // Hlavičkové soubory C++
+#include <algorithm>
 #include <cstdint>
 #include <deque>
 #include <filesystem>
@@ -75,6 +76,27 @@ namespace Formats {
 		bool TakesValue() const
 		{
 			return !this->valueName.empty();
+		}
+
+		/// Dlouhý název (bez pomlček) je hlavním názvem nebo aliasem přepínače
+		bool MatchesLong(const std::string &longName) const
+		{
+			return this->name == longName || std::find(this->aliases.begin(), this->aliases.end(), longName) != this->aliases.end();
+		}
+
+		/// Přepínač má danou zkratku (znak '\0' neodpovídá ničemu)
+		bool MatchesShort(char c) const
+		{
+			return this->shortName != '\0' && this->shortName == c;
+		}
+
+		/// Všechny dlouhé názvy přepínače: nejdřív aliasy, nakonec hlavní název
+		std::vector<std::string> AllNames() const
+		{
+			std::vector<std::string> names = this->aliases;
+			names.push_back(this->name);
+
+			return names;
 		}
 	};
 

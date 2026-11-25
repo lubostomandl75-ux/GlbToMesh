@@ -37,6 +37,17 @@ namespace ExportUtil {
 		return std::isfinite(v) ? std::clamp(v, 0.0f, 1.0f) : 0.0f;
 	}
 
+	uint32_t PackColor(const float *rgba)
+	{
+		uint32_t packed = 0;
+
+		for (size_t c = 0; c < 4; ++c) {
+			packed |= static_cast<uint32_t>(std::lround(Clamp01(rgba[c]) * 255.0f)) << (8 * c);
+		}
+
+		return packed;
+	}
+
 	void SceneConverter::WarnOnce(const std::string &key, const std::string &message)
 	{
 		if (this->warned.insert(key).second) {
@@ -70,6 +81,29 @@ namespace ExportUtil {
 				done[*it] = true;
 			}
 		}
+	}
+
+	std::vector<bool> SceneConverter::AnimatedNodes() const
+	{
+		const size_t nodeCount = this->scene.nodes.size();
+		std::vector<bool> animated(nodeCount, false);
+
+		for (const Gltf::Animation &animation : this->scene.animations) {
+
+			for (const Gltf::Channel &channel : animation.channels) {
+
+				if (channel.node >= 0 && static_cast<size_t>(channel.node) < nodeCount && !channel.times.empty()) {
+					animated[static_cast<size_t>(channel.node)] = true;
+				}
+			}
+		}
+
+		return animated;
+	}
+
+	const Gltf::Material &SceneConverter::SourceMaterial(int index) const
+	{
+		return index >= 0 ? this->scene.materials[static_cast<size_t>(index)] : this->defaultMaterial;
 	}
 
 	// ---------------------------------------------------------------------------------------------------
@@ -109,11 +143,7 @@ namespace ExportUtil {
 		}
 
 		stem = TextUtil::SanitizeFileName(stem, this->modelName + "_texture" + std::to_string(image));
-		std::string candidate = stem + src.extension;
-
-		for (size_t suffix = 2; !this->usedFileNames.insert(TextUtil::ToLowerAscii(candidate)).second; ++suffix) {
-			candidate = stem + "_" + std::to_string(suffix) + src.extension;
-		}
+		const std::string candidate = TextUtil::UniqueName(this->usedFileNames, stem, src.extension);
 
 		this->CheckTextureFileName(candidate);
 
@@ -256,62 +286,45 @@ namespace ExportUtil {
 		p.vertexCount = src.vertexCount;
 		p.triangles = src.triangles;
 
+		const std::vector<float> *colors = &src.colors; // barvy RGBA 0 - 1 v pořadí vrcholů p (nebo prázdné)
+		std::vector<float> expandedColors;
+
 		if (src.normals.empty()) {
 			// Bez normál glTF předepisuje plošné stínování: vrcholy se rozdělí a každý trojúhelník dostane vlastní normálu
-			const size_t triangleCount = src.triangles.size() / 3;
-			p.vertexCount = triangleCount * 3;
-			p.positions.resize(p.vertexCount * 3);
-			p.normals.resize(p.vertexCount * 3);
-			p.triangles.resize(p.vertexCount);
+			p.vertexCount = src.triangles.size() / 3 * 3;
 
-			if (!src.texCoords.empty()) {
-				p.texCoords.resize(p.vertexCount * 2);
-			}
-
-			if (!src.tangents.empty()) {
-				p.tangents.resize(p.vertexCount * 4);
-			}
-
-			std::vector<float> colors;
-
-			if (!src.colors.empty()) {
-				colors.resize(p.vertexCount * 4);
-			}
-
-			if (!src.joints.empty()) {
-				p.joints.resize(p.vertexCount * 4);
-				p.weights.resize(p.vertexCount * 4);
-			}
-
-			for (size_t t = 0; t < triangleCount; ++t) {
-
-				for (size_t c = 0; c < 3; ++c) {
-					const size_t from = src.triangles[t * 3 + c], to = t * 3 + c;
-					std::copy_n(&src.positions[from * 3], 3, &p.positions[to * 3]);
-
-					if (!src.texCoords.empty()) {
-						std::copy_n(&src.texCoords[from * 2], 2, &p.texCoords[to * 2]);
-					}
-
-					if (!src.tangents.empty()) {
-						std::copy_n(&src.tangents[from * 4], 4, &p.tangents[to * 4]);
-					}
-
-					if (!src.colors.empty()) {
-						std::copy_n(&src.colors[from * 4], 4, &colors[to * 4]);
-					}
-
-					if (!src.joints.empty()) {
-						std::copy_n(&src.joints[from * 4], 4, &p.joints[to * 4]);
-						std::copy_n(&src.weights[from * 4], 4, &p.weights[to * 4]);
-					}
-
-					p.triangles[to] = static_cast<uint32_t>(to);
+			// Atribut rozepsaný do vrcholů jednotlivých trojúhelníků (prázdný atribut zůstane prázdný)
+			const auto expand = [&](const auto &from, auto &to, size_t components) {
+				if (from.empty()) {
+					return;
 				}
 
-				const Vec3 a {p.positions[t * 9], p.positions[t * 9 + 1], p.positions[t * 9 + 2]};
-				const Vec3 b {p.positions[t * 9 + 3], p.positions[t * 9 + 4], p.positions[t * 9 + 5]};
-				const Vec3 d {p.positions[t * 9 + 6], p.positions[t * 9 + 7], p.positions[t * 9 + 8]};
+				to.resize(p.vertexCount * components);
+
+				for (size_t v = 0; v < p.vertexCount; ++v) {
+					std::copy_n(&from[src.triangles[v] * components], components, &to[v * components]);
+				}
+			};
+
+			expand(src.positions, p.positions, 3);
+			expand(src.texCoords, p.texCoords, 2);
+			expand(src.tangents, p.tangents, 4);
+			expand(src.colors, expandedColors, 4);
+			expand(src.joints, p.joints, 4);
+			expand(src.weights, p.weights, 4);
+			colors = &expandedColors;
+
+			p.triangles.resize(p.vertexCount);
+			p.normals.resize(p.vertexCount * 3);
+
+			for (size_t v = 0; v < p.vertexCount; ++v) {
+				p.triangles[v] = static_cast<uint32_t>(v);
+			}
+
+			for (size_t t = 0; t < p.vertexCount / 3; ++t) {
+				const Vec3 a = Vec3At(p.positions, t * 3, 3);
+				const Vec3 b = Vec3At(p.positions, t * 3 + 1, 3);
+				const Vec3 d = Vec3At(p.positions, t * 3 + 2, 3);
 				Vec3 n = MathUtil::Normalize(MathUtil::Cross(MathUtil::Sub(b, a), MathUtil::Sub(d, a)));
 
 				if (MathUtil::Length(n) == 0.0) {
@@ -319,25 +332,7 @@ namespace ExportUtil {
 				}
 
 				for (size_t c = 0; c < 3; ++c) {
-					p.normals[t * 9 + c * 3] = static_cast<float>(n.x);
-					p.normals[t * 9 + c * 3 + 1] = static_cast<float>(n.y);
-					p.normals[t * 9 + c * 3 + 2] = static_cast<float>(n.z);
-				}
-			}
-
-			p.colors.resize(p.vertexCount);
-
-			for (size_t v = 0; v < p.vertexCount; ++v) {
-				p.colors[v] = 0xFFFFFFFFu;
-
-				if (!colors.empty()) {
-					uint32_t packed = 0;
-
-					for (size_t c = 0; c < 4; ++c) {
-						packed |= static_cast<uint32_t>(std::lround(Clamp01(colors[v * 4 + c]) * 255.0f)) << (8 * c);
-					}
-
-					p.colors[v] = packed;
+					MathUtil::ToFloats(n, &p.normals[(t * 3 + c) * 3]);
 				}
 			}
 		}
@@ -348,25 +343,20 @@ namespace ExportUtil {
 			p.texCoords = src.texCoords;
 			p.joints = src.joints;
 			p.weights = src.weights;
-			p.colors.assign(p.vertexCount, 0xFFFFFFFFu);
+		}
 
-			if (!src.colors.empty()) {
+		p.colors.assign(p.vertexCount, 0xFFFFFFFFu);
 
-				for (size_t v = 0; v < p.vertexCount; ++v) {
-					uint32_t packed = 0;
+		if (!colors->empty()) {
 
-					for (size_t c = 0; c < 4; ++c) {
-						packed |= static_cast<uint32_t>(std::lround(Clamp01(src.colors[v * 4 + c]) * 255.0f)) << (8 * c);
-					}
-
-					p.colors[v] = packed;
-				}
+			for (size_t v = 0; v < p.vertexCount; ++v) {
+				p.colors[v] = PackColor(&(*colors)[v * 4]);
 			}
 		}
 
 		// Normály jednotkové; nulová normála se nahradí osou Y (aby shadery nedostaly NaN)
 		for (size_t v = 0; v < p.vertexCount; ++v) {
-			const Vec3 n = MathUtil::Normalize({p.normals[v * 3], p.normals[v * 3 + 1], p.normals[v * 3 + 2]});
+			const Vec3 n = MathUtil::Normalize(Vec3At(p.normals, v, 3));
 			const bool zero = MathUtil::Length(n) == 0.0;
 			p.normals[v * 3] = static_cast<float>(zero ? 0.0 : n.x);
 			p.normals[v * 3 + 1] = static_cast<float>(zero ? 1.0 : n.y);
@@ -382,9 +372,9 @@ namespace ExportUtil {
 
 				for (size_t t = 0; t + 2 < p.triangles.size(); t += 3) {
 					const uint32_t i0 = p.triangles[t], i1 = p.triangles[t + 1], i2 = p.triangles[t + 2];
-					const Vec3 p0 {p.positions[i0 * 3], p.positions[i0 * 3 + 1], p.positions[i0 * 3 + 2]};
-					const Vec3 e1 = MathUtil::Sub({p.positions[i1 * 3], p.positions[i1 * 3 + 1], p.positions[i1 * 3 + 2]}, p0);
-					const Vec3 e2 = MathUtil::Sub({p.positions[i2 * 3], p.positions[i2 * 3 + 1], p.positions[i2 * 3 + 2]}, p0);
+					const Vec3 p0 = Vec3At(p.positions, i0, 3);
+					const Vec3 e1 = MathUtil::Sub(Vec3At(p.positions, i1, 3), p0);
+					const Vec3 e2 = MathUtil::Sub(Vec3At(p.positions, i2, 3), p0);
 					const double du1 = p.texCoords[i1 * 2] - p.texCoords[i0 * 2], dv1 = p.texCoords[i1 * 2 + 1] - p.texCoords[i0 * 2 + 1];
 					const double du2 = p.texCoords[i2 * 2] - p.texCoords[i0 * 2], dv2 = p.texCoords[i2 * 2 + 1] - p.texCoords[i0 * 2 + 1];
 					const double det = du1 * dv2 - du2 * dv1;
@@ -404,7 +394,7 @@ namespace ExportUtil {
 			}
 
 			for (size_t v = 0; v < p.vertexCount; ++v) {
-				const Vec3 n {p.normals[v * 3], p.normals[v * 3 + 1], p.normals[v * 3 + 2]};
+				const Vec3 n = Vec3At(p.normals, v, 3);
 				Vec3 t = MathUtil::Sub(sumT[v], {n.x * MathUtil::Dot(n, sumT[v]), n.y * MathUtil::Dot(n, sumT[v]), n.z * MathUtil::Dot(n, sumT[v])});
 				t = MathUtil::Normalize(t);
 

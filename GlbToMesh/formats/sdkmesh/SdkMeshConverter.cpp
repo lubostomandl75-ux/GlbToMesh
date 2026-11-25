@@ -77,34 +77,12 @@ namespace SdkMeshConvert {
 		/// Odchylka klidové pózy od bind pózy, do které se skinované vrcholy nemění (šum plovoucí řádové čárky)
 		constexpr double BIND_TOLERANCE = 1e-5;
 
-		/// Zkrátí UTF-8 text na nejvýš maxBytes bajtů, aniž by přerušil znak
-		std::string TruncateUtf8(const std::string &text, size_t maxBytes)
-		{
-			if (text.size() <= maxBytes) {
-				return text;
-			}
-
-			size_t cut = maxBytes;
-
-			while (cut > 0 && (static_cast<unsigned char>(text[cut]) & 0xC0) == 0x80) {
-				--cut;
-			}
-
-			return text.substr(0, cut);
-		}
+		using TextUtil::TruncateUtf8;
 
 		/// Jedinečný název (bez ohledu na velikost písmen) o nejvýš maxBytes bajtech; shodný název dostane příponu _2, _3, ...
 		std::string UniqueName(std::set<std::string> &used, const std::string &wanted, size_t maxBytes)
 		{
-			std::string base = TruncateUtf8(wanted, maxBytes);
-			std::string name = base;
-
-			for (size_t suffix = 2; !used.insert(TextUtil::ToLowerAscii(name)).second; ++suffix) {
-				const std::string tail = "_" + std::to_string(suffix);
-				name = TruncateUtf8(base, maxBytes - tail.size()) + tail;
-			}
-
-			return name;
+			return TextUtil::UniqueName(used, wanted, std::string(), maxBytes);
 		}
 
 		/// Rozdělí váhy na 8bitové tak, aby jejich součet byl přesně 255 (metoda největšího zbytku); w musí být normalizované
@@ -229,7 +207,6 @@ namespace SdkMeshConvert {
 			/// @param options Volby převodu (musí přežít převodník)
 			Converter(const Gltf::Scene &scene, const Options &options) : SceneConverter(scene, options.leftHanded, options.noTextures, options.modelName), options(options)
 			{
-				this->defaultMaterial.name = "Default";
 			}
 
 			/// Převede celou scénu a vrátí model SDKMESH, soubory textur, animace a statistiku
@@ -238,7 +215,6 @@ namespace SdkMeshConvert {
 		  private:
 			const Options &options;
 			Result result;
-			Gltf::Material defaultMaterial;
 
 			std::vector<int> frameOfNode; // uzel -> index snímku, -1 = uzel bez snímku
 			std::vector<int> nodeOfFrame; // index snímku -> uzel, -1 = snímek bez uzlu (kořen, držák skinovaného meshe)
@@ -255,8 +231,6 @@ namespace SdkMeshConvert {
 			// Textury a materiály
 			/// Název textury je v SDKMESH pole 260 bajtů; delší název se odmítne
 			void CheckTextureFileName(const std::string &fileName) const override;
-			/// Materiál glTF s daným indexem; záporný index = výchozí materiál
-			const Gltf::Material &SourceMaterial(int index) const;
 			/// Zajistí záznam materiálu SDKMESH pro (materiál glTF, skinovaný, barvy vrcholů) a vrátí jeho index
 			uint32_t EnsureMaterial(int index, bool skinned, bool vertexColor);
 			const Gltf::TextureRef *UvTransformSource(const Gltf::Material &material);
@@ -294,11 +268,6 @@ namespace SdkMeshConvert {
 			if (fileName.size() >= SdkMesh::MAX_TEXTURE_NAME) {
 				throw std::runtime_error("The texture file name '" + fileName.substr(0, 40) + "...' is too long for SDKMESH");
 			}
-		}
-
-		const Gltf::Material &Converter::SourceMaterial(int index) const
-		{
-			return index >= 0 ? this->scene.materials[static_cast<size_t>(index)] : this->defaultMaterial;
 		}
 
 		/// Textura, jejíž transformace UV (KHR_texture_transform) se zapíše do souřadnic UV vrcholů; SDKMESH nemá matici UV
@@ -502,8 +471,7 @@ namespace SdkMeshConvert {
 						continue;
 					}
 
-					NodeAnimation &target = byNode[channel.node];
-					const Gltf::Channel *&slot = channel.path == Gltf::Path::Translation ? target.translation : (channel.path == Gltf::Path::Rotation ? target.rotation : target.scale);
+					const Gltf::Channel *&slot = byNode[channel.node].Slot(channel.path);
 
 					if (slot) {
 						++skippedChannels; // dva kanály téhož uzlu a vlastnosti specifikace zakazuje
@@ -564,7 +532,7 @@ namespace SdkMeshConvert {
 						}
 
 						// Spojitost kvaternionů (q a -q jsou táž rotace): žádné skoky při interpolaci
-						if (hasPrevious && q.x * previous.x + q.y * previous.y + q.z * previous.z + q.w * previous.w < 0.0) {
+						if (hasPrevious && MathUtil::Dot(q, previous) < 0.0) {
 							q = {-q.x, -q.y, -q.z, -q.w};
 						}
 
@@ -635,20 +603,7 @@ namespace SdkMeshConvert {
 			}
 
 			// Uzly, které animace mění (bez exportu animací se nic nehýbe); stejná pravidla jako v BuildAnimations
-			std::vector<bool> animated(nodeCount, false);
-
-			if (!this->options.noAnimations) {
-
-				for (const Gltf::Animation &animation : this->scene.animations) {
-
-					for (const Gltf::Channel &channel : animation.channels) {
-
-						if (channel.node >= 0 && static_cast<size_t>(channel.node) < nodeCount && !channel.times.empty()) {
-							animated[static_cast<size_t>(channel.node)] = true;
-						}
-					}
-				}
-			}
+			const std::vector<bool> animated = this->options.noAnimations ? std::vector<bool>(nodeCount, false) : this->AnimatedNodes();
 
 			// Snímky jsou v pořadí do hloubky (rodič před potomkem), takže se příznak "uzel nebo předek je animovaný" dá odvodit v jednom průchodu
 			std::vector<bool> underAnimation(frames.size(), false);
@@ -779,11 +734,7 @@ namespace SdkMeshConvert {
 					SdkMesh::Frame frame;
 					frame.name = UniqueName(this->usedFrameNames, source.name.empty() ? "Node_" + std::to_string(node) : TextUtil::ToUtf8(source.name), SdkMesh::MAX_FRAME_NAME - 1);
 					frame.parent = parent;
-					const Mat4 local = this->Mirror(source.local);
-
-					for (size_t i = 0; i < 16; ++i) {
-						frame.matrix.m[i] = static_cast<float>(local[i]);
-					}
+					MathUtil::ToFloats(this->Mirror(source.local), frame.matrix.m);
 
 					frames.push_back(std::move(frame));
 					kids.emplace_back();
@@ -1093,8 +1044,7 @@ namespace SdkMeshConvert {
 			const bool mirror = this->options.leftHanded;
 			const Mat4 *bake = bakeNode >= 0 ? &this->world[static_cast<size_t>(bakeNode)] : nullptr; // zapékaná světová matice uzlu (v souřadnicích glTF)
 			const Mat4 bakeNormal = bake ? MathUtil::NormalMatrix(*bake) : MathUtil::Identity();
-			double minimum[3] = {std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity()};
-			double maximum[3] = {-std::numeric_limits<double>::infinity(), -std::numeric_limits<double>::infinity(), -std::numeric_limits<double>::infinity()};
+			ExportUtil::Bounds bounds;
 			size_t base = 0;
 
 			for (size_t i = 0; i < items.size(); ++i) {
@@ -1116,13 +1066,18 @@ namespace SdkMeshConvert {
 				for (size_t v = 0; v < p.vertexCount; ++v) {
 					uint8_t *dst = &vb.data[(base + v) * layout.stride];
 					const auto put = [&](size_t at, const void *src, size_t bytes) { std::memcpy(dst + at, src, bytes); };
+					const auto putVec3 = [&](size_t at, const Vec3 &value) {
+						float f[3];
+						MathUtil::ToFloats(value, f);
+						put(at, f, sizeof(f));
+					};
 
-					Vec3 position {p.positions[v * 3], p.positions[v * 3 + 1], p.positions[v * 3 + 2]};
-					Vec3 normal {p.normals[v * 3], p.normals[v * 3 + 1], p.normals[v * 3 + 2]};
+					Vec3 position = ExportUtil::Vec3At(p.positions, v, 3);
+					Vec3 normal = ExportUtil::Vec3At(p.normals, v, 3);
 					Vec3 tangent, binormal;
 
 					if (layout.tangents) {
-						tangent = {p.tangents[v * 4], p.tangents[v * 4 + 1], p.tangents[v * 4 + 2]};
+						tangent = ExportUtil::Vec3At(p.tangents, v, 4);
 						const Vec3 bitangent = MathUtil::Cross(normal, tangent);
 						const double w = p.tangents[v * 4 + 3] < 0.0f ? -1.0 : 1.0;
 						binormal = {bitangent.x * w, bitangent.y * w, bitangent.z * w};
@@ -1172,21 +1127,19 @@ namespace SdkMeshConvert {
 					}
 
 					if (mirror) {
-						position.z = -position.z;
-						normal.z = -normal.z;
-						tangent.z = -tangent.z;
-						binormal.z = -binormal.z;
+						position = MathUtil::MirrorZ(position);
+						normal = MathUtil::MirrorZ(normal);
+						tangent = MathUtil::MirrorZ(tangent);
+						binormal = MathUtil::MirrorZ(binormal);
 					}
 
-					const float pos[3] = {static_cast<float>(position.x), static_cast<float>(position.y), static_cast<float>(position.z)};
-					const float nrm[3] = {static_cast<float>(normal.x), static_cast<float>(normal.y), static_cast<float>(normal.z)};
+					float pos[3];
+					MathUtil::ToFloats(position, pos);
 					put(0, pos, sizeof(pos));
-					put(layout.offsetNormal, nrm, sizeof(nrm));
+					putVec3(layout.offsetNormal, normal);
 
-					for (size_t c = 0; c < 3; ++c) {
-						minimum[c] = std::min(minimum[c], static_cast<double>(pos[c]));
-						maximum[c] = std::max(maximum[c], static_cast<double>(pos[c]));
-					}
+					// Obálka z hodnot, které se skutečně zapíšou (po zaokrouhlení na float)
+					bounds.Add({pos[0], pos[1], pos[2]});
 
 					if (skinned) {
 						uint8_t indices[4] = {0, 0, 0, 0};
@@ -1221,10 +1174,8 @@ namespace SdkMeshConvert {
 					}
 
 					if (layout.tangents) {
-						const float t[3] = {static_cast<float>(tangent.x), static_cast<float>(tangent.y), static_cast<float>(tangent.z)};
-						const float b[3] = {static_cast<float>(binormal.x), static_cast<float>(binormal.y), static_cast<float>(binormal.z)};
-						put(layout.offsetTangent, t, sizeof(t));
-						put(layout.offsetBinormal, b, sizeof(b));
+						putVec3(layout.offsetTangent, tangent);
+						putVec3(layout.offsetBinormal, binormal);
 					}
 				}
 
@@ -1269,12 +1220,8 @@ namespace SdkMeshConvert {
 			}
 
 			float center[3], extent[3];
-
-			for (size_t c = 0; c < 3; ++c) {
-				center[c] = static_cast<float>(0.5 * (minimum[c] + maximum[c]));
-				extent[c] = static_cast<float>(0.5 * (maximum[c] - minimum[c]));
-			}
-
+			MathUtil::ToFloats(bounds.Center(), center);
+			MathUtil::ToFloats(bounds.HalfExtents(), extent);
 			variant.center = {center[0], center[1], center[2]};
 			variant.extents = {extent[0], extent[1], extent[2]};
 

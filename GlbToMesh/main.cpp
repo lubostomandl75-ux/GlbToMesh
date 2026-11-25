@@ -65,31 +65,19 @@ namespace {
 		try {
 			Formats::RegisterAllFormats(registry);
 			CommandLine::Parse(args, registry, settings);
-		}
-		catch (const Formats::UsageError &ex) {
-			std::cerr << "Error: " << ex.what() << std::endl;
 
-			return 2;
-		}
-		catch (const std::exception &ex) {
-			std::cerr << "Error: " << ex.what() << std::endl;
+			if (settings.help) {
+				CommandLine::PrintUsage(registry);
 
-			return 1;
-		}
+				return 0;
+			}
 
-		if (settings.help) {
-			CommandLine::PrintUsage(registry);
+			if (settings.listFormats) {
+				CommandLine::PrintFormats(registry);
 
-			return 0;
-		}
+				return 0;
+			}
 
-		if (settings.listFormats) {
-			CommandLine::PrintFormats(registry);
-
-			return 0;
-		}
-
-		try {
 			CommandLine::Resolve(registry, settings);
 
 			Log::Info("Reading " + TextUtil::PathToUtf8(settings.input));

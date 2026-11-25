@@ -62,13 +62,7 @@ namespace CmoConvert {
 		/// Počet úseků, na které se dělí každý úsek kubické interpolace při vzorkování
 		constexpr size_t CUBIC_SUBDIVISIONS = 4;
 
-		/// Zkopíruje matici (16 čísel double) do pole 16 floatů
-		void ToFloats(const Mat4 &m, float *out)
-		{
-			for (size_t i = 0; i < 16; ++i) {
-				out[i] = static_cast<float>(m[i]);
-			}
-		}
+		using MathUtil::ToFloats;
 
 		/// Kostra jednoho skinu v podobě, jak půjde do CMO
 		struct SkinData {
@@ -104,9 +98,6 @@ namespace CmoConvert {
 			std::set<int> animatedChainNodes; // uzly, které animují kosti některého použitého skinu
 			size_t meshCounter = 0;
 
-			/// Název meshe, který se ve výstupu neopakuje (případně s příponou _2, _3, ...)
-			std::string UniqueMeshName(const std::string &wanted);
-
 			// Textury a materiály
 			/// Převede materiál glTF na materiál CMO a zajistí soubory jeho textur
 			Cmo::Material MakeMaterial(const Gltf::Material &src, const std::string &name);
@@ -123,17 +114,6 @@ namespace CmoConvert {
 			/// Přidá mesh uzlu do modelu: statický se zapeče do světových souřadnic, skinovaný zůstane v klidové poloze
 			void AddInstance(int nodeIndex);
 		};
-
-		std::string Converter::UniqueMeshName(const std::string &wanted)
-		{
-			std::string name = wanted;
-
-			for (size_t suffix = 2; !this->usedMeshNames.insert(name).second; ++suffix) {
-				name = wanted + "_" + std::to_string(suffix);
-			}
-
-			return name;
-		}
 
 		// ---------------------------------------------------------------------------------------------------
 		// Textury a materiály
@@ -330,9 +310,7 @@ namespace CmoConvert {
 						continue;
 					}
 
-					NodeAnimation &target = byNode[channel.node];
-					const Gltf::Channel *&slot = channel.path == Gltf::Path::Translation ? target.translation : (channel.path == Gltf::Path::Rotation ? target.rotation : target.scale);
-					slot = &channel;
+					byNode[channel.node].Slot(channel.path) = &channel;
 					minTime = std::min(minTime, static_cast<double>(channel.times.front()));
 					maxTime = std::max(maxTime, static_cast<double>(channel.times.back()));
 					this->animatedChainNodes.insert(channel.node);
@@ -549,11 +527,8 @@ namespace CmoConvert {
 
 				const Mat4 invBind = this->Mirror(skin.inverseBind[firstSlot[old]]);
 
-				for (const double v : invBind) {
-
-					if (!std::isfinite(v)) {
-						throw std::runtime_error("Skin '" + skin.name + "' has an inverse bind matrix that is not finite");
-					}
+				if (!MathUtil::IsFinite(invBind)) {
+					throw std::runtime_error("Skin '" + skin.name + "' has an inverse bind matrix that is not finite");
 				}
 
 				Cmo::Bone &bone = data.bones[i];
@@ -592,7 +567,8 @@ namespace CmoConvert {
 			++this->meshCounter;
 
 			Cmo::Mesh out;
-			out.name = this->UniqueMeshName(label);
+			// Název meshe se ve výstupu neopakuje (případně s příponou _2, _3, ...); CMO rozlišuje velikost písmen
+			out.name = TextUtil::UniqueName(this->usedMeshNames, label, std::string(), std::string::npos, false);
 
 			SkinData *skin = nullptr;
 
@@ -630,8 +606,7 @@ namespace CmoConvert {
 
 			std::map<int, uint32_t> materialSlots;
 			bool missingSkin = false;
-			Vec3 boundsMin {std::numeric_limits<double>::max(), std::numeric_limits<double>::max(), std::numeric_limits<double>::max()};
-			Vec3 boundsMax {std::numeric_limits<double>::lowest(), std::numeric_limits<double>::lowest(), std::numeric_limits<double>::lowest()};
+			ExportUtil::Bounds bounds;
 
 			for (const Gltf::Primitive &primitive : mesh.primitives) {
 
@@ -640,15 +615,8 @@ namespace CmoConvert {
 				uint32_t materialIndex;
 
 				if (slot == materialSlots.end()) {
-					static const Gltf::Material defaultMaterial = [] {
-						Gltf::Material m;
-						m.name = "Default";
-
-						return m;
-					}();
-
 					const bool hasMaterial = primitive.material >= 0;
-					const Gltf::Material &src = hasMaterial ? this->scene.materials[static_cast<size_t>(primitive.material)] : defaultMaterial;
+					const Gltf::Material &src = this->SourceMaterial(primitive.material);
 					const std::string name = !src.name.empty() ? src.name : (hasMaterial ? "Material_" + std::to_string(primitive.material) : "Default");
 					materialIndex = static_cast<uint32_t>(out.materials.size());
 					materialSlots[primitive.material] = materialIndex;
@@ -751,9 +719,9 @@ namespace CmoConvert {
 
 					for (size_t i = 0; i < chunk.vertices.size(); ++i) {
 						const size_t v = chunk.vertices[i];
-						Vec3 position {p.positions[v * 3], p.positions[v * 3 + 1], p.positions[v * 3 + 2]};
-						Vec3 normal {p.normals[v * 3], p.normals[v * 3 + 1], p.normals[v * 3 + 2]};
-						Vec3 tangent {p.tangents[v * 4], p.tangents[v * 4 + 1], p.tangents[v * 4 + 2]};
+						Vec3 position = ExportUtil::Vec3At(p.positions, v, 3);
+						Vec3 normal = ExportUtil::Vec3At(p.normals, v, 3);
+						Vec3 tangent = ExportUtil::Vec3At(p.tangents, v, 4);
 						double handedness = p.tangents[v * 4 + 3] < 0.0f ? -1.0 : 1.0;
 
 						if (!skinned) {
@@ -767,22 +735,16 @@ namespace CmoConvert {
 						}
 
 						if (mirror) {
-							position.z = -position.z;
-							normal.z = -normal.z;
-							tangent.z = -tangent.z;
+							position = MathUtil::MirrorZ(position);
+							normal = MathUtil::MirrorZ(normal);
+							tangent = MathUtil::MirrorZ(tangent);
 							handedness = -handedness;
 						}
 
 						Cmo::VertexRecord &record = vertices[i];
-						record.position[0] = static_cast<float>(position.x);
-						record.position[1] = static_cast<float>(position.y);
-						record.position[2] = static_cast<float>(position.z);
-						record.normal[0] = static_cast<float>(normal.x);
-						record.normal[1] = static_cast<float>(normal.y);
-						record.normal[2] = static_cast<float>(normal.z);
-						record.tangent[0] = static_cast<float>(tangent.x);
-						record.tangent[1] = static_cast<float>(tangent.y);
-						record.tangent[2] = static_cast<float>(tangent.z);
+						ToFloats(position, record.position);
+						ToFloats(normal, record.normal);
+						ToFloats(tangent, record.tangent);
 						record.tangent[3] = static_cast<float>(handedness);
 						record.color = p.colors[v];
 						record.texCoord[0] = p.texCoords.empty() ? 0.0f : p.texCoords[v * 2];
@@ -792,8 +754,7 @@ namespace CmoConvert {
 							throw std::runtime_error("Mesh '" + out.name + "' has a position that is not finite after the transformation");
 						}
 
-						boundsMin = {std::min(boundsMin.x, position.x), std::min(boundsMin.y, position.y), std::min(boundsMin.z, position.z)};
-						boundsMax = {std::max(boundsMax.x, position.x), std::max(boundsMax.y, position.y), std::max(boundsMax.z, position.z)};
+						bounds.Add(position);
 
 						if (skinned) {
 							Cmo::SkinningVertexRecord &skinRecord = skinRecords[i];
@@ -856,7 +817,7 @@ namespace CmoConvert {
 
 			// Obálka (v souřadnicích souboru): střed kvádru a poloměr koule kolem něj
 			Cmo::MeshExtentsRecord &extents = out.extents;
-			const Vec3 center {(boundsMin.x + boundsMax.x) * 0.5, (boundsMin.y + boundsMax.y) * 0.5, (boundsMin.z + boundsMax.z) * 0.5};
+			const Vec3 center = bounds.Center();
 			double radius = 0.0;
 
 			for (const auto &vb : out.vertexBuffers) {
@@ -866,16 +827,10 @@ namespace CmoConvert {
 				}
 			}
 
-			extents.values[0] = static_cast<float>(center.x);
-			extents.values[1] = static_cast<float>(center.y);
-			extents.values[2] = static_cast<float>(center.z);
+			ToFloats(center, &extents.values[0]);
 			extents.values[3] = static_cast<float>(radius);
-			extents.values[4] = static_cast<float>(boundsMin.x);
-			extents.values[5] = static_cast<float>(boundsMin.y);
-			extents.values[6] = static_cast<float>(boundsMin.z);
-			extents.values[7] = static_cast<float>(boundsMax.x);
-			extents.values[8] = static_cast<float>(boundsMax.y);
-			extents.values[9] = static_cast<float>(boundsMax.z);
+			ToFloats(bounds.min, &extents.values[4]);
+			ToFloats(bounds.max, &extents.values[7]);
 
 			this->result.stats.meshes += 1;
 			this->result.stats.skinnedMeshes += skinned ? 1 : 0;
@@ -889,14 +844,7 @@ namespace CmoConvert {
 			this->ComputeWorld();
 			this->skins.assign(this->scene.skins.size(), SkinData());
 
-			this->nodeAnimated.assign(this->scene.nodes.size(), false);
-
-			for (const Gltf::Animation &animation : this->scene.animations) {
-
-				for (const Gltf::Channel &channel : animation.channels) {
-					this->nodeAnimated[static_cast<size_t>(channel.node)] = true;
-				}
-			}
+			this->nodeAnimated = this->AnimatedNodes();
 
 			// Průchod scénou do hloubky (pořadí uzlů dává pořadí meshů v souboru)
 			std::vector<int> stack;

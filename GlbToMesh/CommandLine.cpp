@@ -49,10 +49,7 @@ namespace CommandLine {
 			for (const auto &format : registry.Formats()) {
 
 				for (const Formats::OptionSpec &spec : format->Options()) {
-					std::vector<std::string> names = spec.aliases;
-					names.push_back(spec.name);
-
-					for (const std::string &name : names) {
+					for (const std::string &name : spec.AllNames()) {
 
 						if (ReservedLongOptions().count(name) > 0) {
 							throw std::logic_error("The format '" + format->Name() + "' declares the option --" + name + ", which is a common option of the program");

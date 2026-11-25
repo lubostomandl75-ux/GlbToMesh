@@ -315,4 +315,32 @@ namespace TextUtil {
 
 		return reserved ? "_" + result : result;
 	}
+
+	std::string TruncateUtf8(const std::string &text, size_t maxBytes)
+	{
+		if (text.size() <= maxBytes) {
+			return text;
+		}
+
+		size_t cut = maxBytes;
+
+		while (cut > 0 && (static_cast<unsigned char>(text[cut]) & 0xC0) == 0x80) {
+			--cut;
+		}
+
+		return text.substr(0, cut);
+	}
+
+	std::string UniqueName(std::set<std::string> &used, const std::string &stem, const std::string &extension, size_t maxBytes, bool ignoreCase)
+	{
+		const std::string base = TruncateUtf8(stem, maxBytes);
+		std::string name = base + extension;
+
+		for (size_t suffix = 2; !used.insert(ignoreCase ? ToLowerAscii(name) : name).second; ++suffix) {
+			const std::string tail = "_" + std::to_string(suffix);
+			name = TruncateUtf8(base, maxBytes - tail.size()) + tail + extension;
+		}
+
+		return name;
+	}
 }

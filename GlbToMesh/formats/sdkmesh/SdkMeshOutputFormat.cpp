@@ -46,13 +46,7 @@ namespace SdkMesh {
 					stem += "_" + TextUtil::SanitizeFileName(animations[i].name, "animation" + std::to_string(i));
 				}
 
-				std::string candidate = stem + ".sdkmesh_anim";
-
-				for (size_t suffix = 2; !used.insert(TextUtil::ToLowerAscii(candidate)).second; ++suffix) {
-					candidate = stem + "_" + std::to_string(suffix) + ".sdkmesh_anim";
-				}
-
-				names.push_back(candidate);
+				names.push_back(TextUtil::UniqueName(used, stem, ".sdkmesh_anim"));
 			}
 
 			return names;

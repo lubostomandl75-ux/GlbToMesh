@@ -14,7 +14,9 @@
 #pragma once
 
 // Hlavičkové soubory C++
+#include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <map>
 #include <set>
 #include <string>
@@ -34,11 +36,51 @@ namespace ExportUtil {
 	/// Omezí hodnotu na 0 až 1; neplatná hodnota (NaN, nekonečno) dá 0
 	float Clamp01(float v);
 
+	/// Barvu RGBA (4 složky 0 - 1) zabalí do 32 bitů: R v nejnižším bajtu, A v nejvyšším
+	uint32_t PackColor(const float *rgba);
+
+	/// Trojice čísel z pole atributů vrcholů (index = číslo vrcholu, stride = počet čísel na vrchol)
+	inline MathUtil::Vec3 Vec3At(const std::vector<float> &data, size_t index, size_t stride)
+	{
+		return {data[index * stride], data[index * stride + 1], data[index * stride + 2]};
+	}
+
+	/// Osově zarovnaný ohraničující kvádr bodů
+	struct Bounds {
+		MathUtil::Vec3 min {std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity()};
+		MathUtil::Vec3 max {-std::numeric_limits<double>::infinity(), -std::numeric_limits<double>::infinity(), -std::numeric_limits<double>::infinity()};
+
+		/// Rozšíří kvádr o bod
+		void Add(const MathUtil::Vec3 &p)
+		{
+			this->min = {std::min(this->min.x, p.x), std::min(this->min.y, p.y), std::min(this->min.z, p.z)};
+			this->max = {std::max(this->max.x, p.x), std::max(this->max.y, p.y), std::max(this->max.z, p.z)};
+		}
+
+		/// Střed kvádru
+		MathUtil::Vec3 Center() const
+		{
+			return {(this->min.x + this->max.x) * 0.5, (this->min.y + this->max.y) * 0.5, (this->min.z + this->max.z) * 0.5};
+		}
+
+		/// Poloviční rozměry kvádru (vzdálenost středu od stěn)
+		MathUtil::Vec3 HalfExtents() const
+		{
+			return {(this->max.x - this->min.x) * 0.5, (this->max.y - this->min.y) * 0.5, (this->max.z - this->min.z) * 0.5};
+		}
+	};
+
 	/// Kanály jedné animace pro jeden uzel
 	struct NodeAnimation {
 		const Gltf::Channel *translation = nullptr;
 		const Gltf::Channel *rotation = nullptr;
 		const Gltf::Channel *scale = nullptr;
+
+		/// Ukazatel na kanál pro danou vlastnost uzlu (posun, rotace nebo měřítko)
+		const Gltf::Channel *&Slot(Gltf::Path path)
+		{
+			return path == Gltf::Path::Translation ? this->translation : (path == Gltf::Path::Rotation ? this->rotation : this->scale);
+		}
 	};
 
 	/// Lokální transformace uzlu: posun, rotace a měřítko
@@ -79,12 +121,14 @@ namespace ExportUtil {
 		 */
 		SceneConverter(const Gltf::Scene &scene, bool leftHanded, bool noTextures, const std::string &modelName) : scene(scene), leftHanded(leftHanded), noTextures(noTextures), modelName(modelName)
 		{
+			this->defaultMaterial.name = "Default";
 		}
 
 		const Gltf::Scene &scene;
 		const bool leftHanded;
 		const bool noTextures;
 		const std::string modelName;
+		Gltf::Material defaultMaterial;			// výchozí materiál glTF pro primitiva bez materiálu
 
 		std::vector<MathUtil::Mat4> world;		// světová matice každého uzlu (viz ComputeWorld)
 		std::set<std::string> warned;			// klíče už vypsaných varování
@@ -100,6 +144,12 @@ namespace ExportUtil {
 
 		/// Spočítá světové matice všech uzlů scény (world)
 		void ComputeWorld();
+
+		/// Uzly, které mění aspoň jeden animační kanál některé animace (index = uzel)
+		std::vector<bool> AnimatedNodes() const;
+
+		/// Materiál glTF s daným indexem; záporný index = výchozí materiál
+		const Gltf::Material &SourceMaterial(int index) const;
 
 		/**
 		 * Zajistí soubor textury (vyextrahuje obrázek z glTF) a vrátí jeho název.
