@@ -16,6 +16,7 @@
 // Hlavičkové soubory C++
 #include <algorithm>
 #include <cstdint>
+#include <initializer_list>
 #include <limits>
 #include <map>
 #include <set>
@@ -170,6 +171,32 @@ namespace ExportUtil {
 
 		/// Vypíše varování jen jednou pro daný klíč
 		void WarnOnce(const std::string &key, const std::string &message);
+
+		/// Varování o vlastnostech geometrie, které výstupní formát neumí: morph targety a víc než 4 vlivy kostí na vrchol
+		void WarnGeometryLimits(const std::string &formatName);
+
+		/**
+		 * Varování, pokud materiál má textury metallic-roughness, okluze nebo specular-glossiness, které formát nemá kam zapsat.
+		 *
+		 * @param const Gltf::Material& src Materiál glTF
+		 * @param const std::string& keyName Název materiálu ve výstupu (klíč jednorázového varování)
+		 * @param const std::string& displayName Název materiálu v hlášení
+		 * @param const std::string& formatName Formát v hlášení (např. "CMO", "SDKMESH 101")
+		 */
+		void WarnUnsupportedPbrTextures(const Gltf::Material &src, const std::string &keyName, const std::string &displayName, const std::string &formatName);
+
+		/**
+		 * Varování, pokud některá z textur používá jinou sadu souřadnic UV než 0 (formát zapisuje jen TEXCOORD_0).
+		 *
+		 * @param std::initializer_list<const Gltf::TextureRef*> refs Textury, které formát zapisuje
+		 * @param const std::string& keyName Název materiálu ve výstupu (klíč jednorázového varování)
+		 * @param const std::string& displayName Název materiálu v hlášení
+		 * @param const std::string& reason Důvod v hlášení (např. "CMO has just one")
+		 */
+		void WarnTexCoordSet(std::initializer_list<const Gltf::TextureRef *> refs, const std::string &keyName, const std::string &displayName, const std::string &reason);
+
+		/// Podrobnost pro --verbose: materiál bez osvětlení (KHR_materials_unlit) se zapíše jako standardní materiál bez odlesku
+		static void NoteUnlit(const Gltf::Material &src, const std::string &displayName);
 
 		/// Při levotočivém výstupu zrcadlí matici podél osy Z (S * M * S), jinak ji vrátí beze změny
 		MathUtil::Mat4 Mirror(const MathUtil::Mat4 &m) const;

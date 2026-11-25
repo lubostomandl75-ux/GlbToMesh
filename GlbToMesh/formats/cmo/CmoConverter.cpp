@@ -195,9 +195,7 @@ namespace CmoConvert {
 			out.textures[2] = this->TextureFile(src.normalTexture.image, name);
 			out.textures[3] = this->TextureFile(src.emissiveTexture.image, name);
 
-			if (src.metallicRoughnessTexture.image >= 0 || src.occlusionTexture.image >= 0 || src.specularGlossinessTexture.image >= 0) {
-				this->WarnOnce("pbrtex:" + name, "Material '" + name + "': the metallic-roughness, occlusion and specular-glossiness textures have no equivalent in CMO and are not exported.");
-			}
+			this->WarnUnsupportedPbrTextures(src, name, name, "CMO");
 
 			// Transformace UV: CMO má jednu na materiál, bere se z první textury, která ji má
 			const Gltf::TextureRef *transformSource = nullptr;
@@ -226,16 +224,8 @@ namespace CmoConvert {
 				m.uvTransform[13] = static_cast<float>(transformSource->offset[1]);
 			}
 
-			for (const Gltf::TextureRef *ref : {&src.baseColorTexture, &src.normalTexture, &src.emissiveTexture}) {
-
-				if (ref->image >= 0 && ref->texCoord != 0) {
-					this->WarnOnce("uvset:" + name, "Material '" + name + "' uses a texture coordinate set other than 0, but CMO has just one - TEXCOORD_0 is used.");
-				}
-			}
-
-			if (src.unlit) {
-				Log::Detail("Material '" + name + "' is unlit (KHR_materials_unlit) - exported as a standard material without a specular highlight.");
-			}
+			this->WarnTexCoordSet({&src.baseColorTexture, &src.normalTexture, &src.emissiveTexture}, name, name, "CMO has just one");
+			NoteUnlit(src, name);
 
 			return out;
 		}
@@ -901,22 +891,7 @@ namespace CmoConvert {
 				}
 			}
 
-			if (this->scene.morphTargetPrimitives > 0) {
-				this->WarnOnce("morph", std::to_string(this->scene.morphTargetPrimitives) + " primitives have morph targets, which CMO does not support - only the base shape is exported.");
-			}
-
-			size_t extraInfluences = 0;
-
-			for (const Gltf::Mesh &mesh : this->scene.meshes) {
-
-				for (const Gltf::Primitive &primitive : mesh.primitives) {
-					extraInfluences += primitive.extraInfluences;
-				}
-			}
-
-			if (extraInfluences > 0) {
-				this->WarnOnce("influences", std::to_string(extraInfluences) + " vertices have more than 4 bone influences; CMO keeps the 4 strongest.");
-			}
+			this->WarnGeometryLimits("CMO");
 
 			for (const SkinData &skin : this->skins) {
 

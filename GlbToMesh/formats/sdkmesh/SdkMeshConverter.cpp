@@ -422,20 +422,9 @@ namespace SdkMeshConvert {
 				this->WarnOnce("emissivetex:" + out.name, "Material '" + sourceName + "': SDKMESH 101 has no emissive texture - not exported (use --pbr for SDKMESH 200).");
 			}
 
-			if (src.metallicRoughnessTexture.image >= 0 || src.occlusionTexture.image >= 0 || src.specularGlossinessTexture.image >= 0) {
-				this->WarnOnce("pbrtex:" + out.name, "Material '" + sourceName + "': the metallic-roughness, occlusion and specular-glossiness textures have no equivalent in SDKMESH 101 and are not exported.");
-			}
-
-			for (const Gltf::TextureRef *ref : {&src.baseColorTexture, &src.normalTexture}) {
-
-				if (ref->image >= 0 && ref->texCoord != 0) {
-					this->WarnOnce("uvset:" + out.name, "Material '" + sourceName + "' uses a texture coordinate set other than 0, but the exported vertices have just one - TEXCOORD_0 is used.");
-				}
-			}
-
-			if (src.unlit) {
-				Log::Detail("Material '" + sourceName + "' is unlit (KHR_materials_unlit) - exported as a standard material without a specular highlight.");
-			}
+			this->WarnUnsupportedPbrTextures(src, out.name, sourceName, "SDKMESH 101");
+			this->WarnTexCoordSet({&src.baseColorTexture, &src.normalTexture}, out.name, sourceName, "the exported vertices have just one");
+			NoteUnlit(src, sourceName);
 
 			this->materialRecords[key] = static_cast<uint32_t>(this->result.model.materials.size());
 			this->result.model.materials.push_back(std::move(out));
@@ -1325,22 +1314,7 @@ namespace SdkMeshConvert {
 				this->BuildAnimations();
 			}
 
-			if (this->scene.morphTargetPrimitives > 0) {
-				this->WarnOnce("morph", std::to_string(this->scene.morphTargetPrimitives) + " primitives have morph targets, which SDKMESH does not support - only the base shape is exported.");
-			}
-
-			size_t extraInfluences = 0;
-
-			for (const Gltf::Mesh &mesh : this->scene.meshes) {
-
-				for (const Gltf::Primitive &primitive : mesh.primitives) {
-					extraInfluences += primitive.extraInfluences;
-				}
-			}
-
-			if (extraInfluences > 0) {
-				this->WarnOnce("influences", std::to_string(extraInfluences) + " vertices have more than 4 bone influences; SDKMESH keeps the 4 strongest.");
-			}
+			this->WarnGeometryLimits("SDKMESH");
 
 			this->result.stats.frames = this->result.model.frames.size();
 			this->result.stats.materials = this->result.model.materials.size();

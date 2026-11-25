@@ -55,6 +55,52 @@ namespace ExportUtil {
 		}
 	}
 
+	void SceneConverter::WarnGeometryLimits(const std::string &formatName)
+	{
+		if (this->scene.morphTargetPrimitives > 0) {
+			this->WarnOnce("morph", std::to_string(this->scene.morphTargetPrimitives) + " primitives have morph targets, which " + formatName + " does not support - only the base shape is exported.");
+		}
+
+		size_t extraInfluences = 0;
+
+		for (const Gltf::Mesh &mesh : this->scene.meshes) {
+
+			for (const Gltf::Primitive &primitive : mesh.primitives) {
+				extraInfluences += primitive.extraInfluences;
+			}
+		}
+
+		if (extraInfluences > 0) {
+			this->WarnOnce("influences", std::to_string(extraInfluences) + " vertices have more than 4 bone influences; " + formatName + " keeps the 4 strongest.");
+		}
+	}
+
+	void SceneConverter::WarnUnsupportedPbrTextures(const Gltf::Material &src, const std::string &keyName, const std::string &displayName, const std::string &formatName)
+	{
+		if (src.metallicRoughnessTexture.image >= 0 || src.occlusionTexture.image >= 0 || src.specularGlossinessTexture.image >= 0) {
+			this->WarnOnce(
+				"pbrtex:" + keyName, "Material '" + displayName + "': the metallic-roughness, occlusion and specular-glossiness textures have no equivalent in " + formatName + " and are not exported."
+			);
+		}
+	}
+
+	void SceneConverter::WarnTexCoordSet(std::initializer_list<const Gltf::TextureRef *> refs, const std::string &keyName, const std::string &displayName, const std::string &reason)
+	{
+		for (const Gltf::TextureRef *ref : refs) {
+
+			if (ref->image >= 0 && ref->texCoord != 0) {
+				this->WarnOnce("uvset:" + keyName, "Material '" + displayName + "' uses a texture coordinate set other than 0, but " + reason + " - TEXCOORD_0 is used.");
+			}
+		}
+	}
+
+	void SceneConverter::NoteUnlit(const Gltf::Material &src, const std::string &displayName)
+	{
+		if (src.unlit) {
+			Log::Detail("Material '" + displayName + "' is unlit (KHR_materials_unlit) - exported as a standard material without a specular highlight.");
+		}
+	}
+
 	Mat4 SceneConverter::Mirror(const Mat4 &m) const
 	{
 		return this->leftHanded ? MathUtil::MirrorZ(m) : m;
